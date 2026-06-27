@@ -24,11 +24,12 @@ When building AI requests, consider these layers:
 5. Current book
 6. Current chapter
 7. Retrieved chunks
-8. User notes
-9. User highlights
-10. Conversation summary
-11. Long-term memory
-12. Output rules
+8. Interpretive background knowledge
+9. User notes
+10. User highlights
+11. Conversation summary
+12. Long-term memory
+13. Output rules
 
 ## Rules
 
@@ -37,6 +38,8 @@ When building AI requests, consider these layers:
 - Prefer current chapter over unrelated chunks.
 - Keep prompts structured.
 - Separate instructions from user/book content.
+- Separate textual evidence from interpretive background.
+- Route philosophy, theology, psychology, history, and literary comparisons only when relevant.
 - Make AI providers replaceable.
 - Do not hardcode Gemini, DeepSeek, or OpenAI directly into app logic.
 - If context is insufficient, Sophia should say so.
@@ -57,4 +60,5 @@ When making changes:
 1. Explain which context layer is affected.
 2. Explain what context is static vs dynamic.
 3. Keep context small and focused.
-4. Add a verification method.
+4. Explain what is textual evidence vs interpretive background.
+5. Add a verification method.
