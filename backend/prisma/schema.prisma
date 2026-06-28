@@ -1,0 +1,572 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AuthProvider {
+  EMAIL  @map("email")
+  GOOGLE @map("google")
+
+  @@map("auth_provider")
+}
+
+enum BookSourceType {
+  UPLOAD        @map("upload")
+  PUBLIC_DOMAIN @map("public_domain")
+  IMPORTED      @map("imported")
+
+  @@map("book_source_type")
+}
+
+enum BookProcessingStatus {
+  UPLOADED        @map("uploaded")
+  EXTRACTING_TEXT @map("extracting_text")
+  CHUNKING        @map("chunking")
+  READY           @map("ready")
+  FAILED          @map("failed")
+
+  @@map("book_processing_status")
+}
+
+enum UserBookStatus {
+  ACTIVE   @map("active")
+  READING  @map("reading")
+  FINISHED @map("finished")
+  ARCHIVED @map("archived")
+
+  @@map("user_book_status")
+}
+
+enum ChapterDetectedMethod {
+  HEURISTIC   @map("heuristic")
+  MANUAL      @map("manual")
+  IMPORTED    @map("imported")
+  AI_ASSISTED @map("ai_assisted")
+
+  @@map("chapter_detected_method")
+}
+
+enum PageExtractionStatus {
+  PENDING    @map("pending")
+  EXTRACTING @map("extracting")
+  EXTRACTED  @map("extracted")
+  FAILED     @map("failed")
+
+  @@map("page_extraction_status")
+}
+
+enum NoteType {
+  MARGIN_NOTE @map("margin_note")
+  REFLECTION  @map("reflection")
+  QUESTION    @map("question")
+  SUMMARY     @map("summary")
+
+  @@map("note_type")
+}
+
+enum ChatSessionMode {
+  PASSAGE_EXPLANATION  @map("passage_explanation")
+  CHAPTER_SUMMARY      @map("chapter_summary")
+  REFLECTION           @map("reflection")
+  BOOK_QUESTION        @map("book_question")
+  GENERAL_READING_HELP @map("general_reading_help")
+
+  @@map("chat_session_mode")
+}
+
+enum ChatMessageRole {
+  USER      @map("user")
+  ASSISTANT @map("assistant")
+  SYSTEM    @map("system")
+  TOOL      @map("tool")
+
+  @@map("chat_message_role")
+}
+
+enum ChapterSummaryType {
+  SHORT                @map("short")
+  DETAILED             @map("detailed")
+  PHILOSOPHICAL_THEMES @map("philosophical_themes")
+  STUDY_NOTES          @map("study_notes")
+
+  @@map("chapter_summary_type")
+}
+
+enum UserMemoryType {
+  PREFERRED_EXPLANATION_STYLE @map("preferred_explanation_style")
+  FAVORITE_PHILOSOPHER        @map("favorite_philosopher")
+  DIFFICULT_CONCEPT           @map("difficult_concept")
+  RECURRING_QUESTION          @map("recurring_question")
+  PERSONAL_REFLECTION         @map("personal_reflection")
+  FINISHED_BOOK               @map("finished_book")
+  IMPORTANT_HIGHLIGHT         @map("important_highlight")
+
+  @@map("user_memory_type")
+}
+
+enum MemorySourceType {
+  NOTE            @map("note")
+  HIGHLIGHT       @map("highlight")
+  CHAT_MESSAGE    @map("chat_message")
+  READING_SESSION @map("reading_session")
+  MANUAL          @map("manual")
+
+  @@map("memory_source_type")
+}
+
+enum MemoryStatus {
+  ACTIVE   @map("active")
+  ARCHIVED @map("archived")
+  REJECTED @map("rejected")
+
+  @@map("memory_status")
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique @db.VarChar(320)
+  displayName     String?   @map("display_name") @db.VarChar(255)
+  avatarUrl       String?   @map("avatar_url") @db.Text
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  authAccounts     AuthAccount[]
+  sessions         Session[]
+  refreshTokens    RefreshToken[]
+  preferences      UserPreference?
+  readingProfile   UserReadingProfile?
+  createdBooks     Book[]               @relation("BookCreatedBy")
+  userBooks        UserBook[]
+  highlights       Highlight[]
+  notes            Note[]
+  chatSessions     ChatSession[]
+  chatMessages     ChatMessage[]
+  chapterSummaries ChapterSummary[]
+  readingProgress  ReadingProgress[]
+  readingSessions  ReadingSession[]
+  memories         UserMemory[]
+
+  @@map("users")
+}
+
+model AuthAccount {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  provider       AuthProvider
+  providerUserId String       @map("provider_user_id") @db.VarChar(255)
+  email          String?      @db.VarChar(320)
+  passwordHash   String?      @map("password_hash") @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId], map: "auth_accounts_provider_provider_user_id_key")
+  @@index([userId], map: "auth_accounts_user_id_idx")
+  @@map("auth_accounts")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  sessionTokenHash String    @unique @map("session_token_hash") @db.VarChar(255)
+  expiresAt        DateTime  @map("expires_at")
+  userAgent        String?   @map("user_agent") @db.Text
+  ipAddress        String?   @map("ip_address") @db.VarChar(64)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@index([userId], map: "sessions_user_id_idx")
+  @@index([expiresAt], map: "sessions_expires_at_idx")
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  sessionId String    @map("session_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at")
+  rotatedAt DateTime? @map("rotated_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "refresh_tokens_user_id_idx")
+  @@index([sessionId], map: "refresh_tokens_session_id_idx")
+  @@index([expiresAt], map: "refresh_tokens_expires_at_idx")
+  @@map("refresh_tokens")
+}
+
+model UserPreference {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  theme            String   @default("system") @db.VarChar(50)
+  fontSize         Int      @default(18) @map("font_size")
+  fontFamily       String   @default("serif") @map("font_family") @db.VarChar(120)
+  lineHeight       Decimal  @default(1.6) @map("line_height") @db.Decimal(3, 2)
+  explanationDepth String   @default("balanced") @map("explanation_depth") @db.VarChar(50)
+  preferredTone    String   @default("calm") @map("preferred_tone") @db.VarChar(80)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model UserReadingProfile {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  favoriteAuthors   Json?    @map("favorite_authors")
+  favoriteThemes    Json?    @map("favorite_themes")
+  difficultConcepts Json?    @map("difficult_concepts")
+  readingGoals      Json?    @map("reading_goals")
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_reading_profiles")
+}
+
+model Book {
+  id               String               @id @default(uuid()) @db.Uuid
+  title            String               @db.Text
+  author           String?              @db.Text
+  language         String               @default("en") @db.VarChar(16)
+  sourceType       BookSourceType       @default(UPLOAD) @map("source_type")
+  filePath         String               @map("file_path") @db.Text
+  fileHash         String               @map("file_hash") @db.VarChar(128)
+  mimeType         String               @default("application/pdf") @map("mime_type") @db.VarChar(120)
+  pageCount        Int?                 @map("page_count")
+  processingStatus BookProcessingStatus @default(UPLOADED) @map("processing_status")
+  processingError  String?              @map("processing_error") @db.Text
+  createdByUserId  String?              @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  createdByUser    User?             @relation("BookCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  userBooks        UserBook[]
+  chapters         Chapter[]
+  pages            Page[]
+  chunks           BookChunk[]
+  highlights       Highlight[]
+  notes            Note[]
+  chatSessions     ChatSession[]
+  chapterSummaries ChapterSummary[]
+  readingProgress  ReadingProgress[]
+  readingSessions  ReadingSession[]
+
+  @@index([fileHash], map: "books_file_hash_idx")
+  @@index([createdByUserId], map: "books_created_by_user_id_idx")
+  @@map("books")
+}
+
+model UserBook {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @map("user_id") @db.Uuid
+  bookId       String         @map("book_id") @db.Uuid
+  status       UserBookStatus @default(ACTIVE)
+  addedAt      DateTime       @default(now()) @map("added_at")
+  lastOpenedAt DateTime?      @map("last_opened_at")
+  archivedAt   DateTime?      @map("archived_at")
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book            Book             @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  highlights      Highlight[]
+  notes           Note[]
+  chatSessions    ChatSession[]
+  readingProgress ReadingProgress?
+  readingSessions ReadingSession[]
+
+  @@unique([userId, bookId], map: "user_books_user_id_book_id_key")
+  @@index([userId, status], map: "user_books_user_id_status_idx")
+  @@index([bookId], map: "user_books_book_id_idx")
+  @@map("user_books")
+}
+
+model Chapter {
+  id             String                 @id @default(uuid()) @db.Uuid
+  bookId         String                 @map("book_id") @db.Uuid
+  title          String?                @db.Text
+  chapterIndex   Int                    @map("chapter_index")
+  pageStart      Int?                   @map("page_start")
+  pageEnd        Int?                   @map("page_end")
+  startOffset    Int?                   @map("start_offset")
+  endOffset      Int?                   @map("end_offset")
+  detectedMethod ChapterDetectedMethod? @map("detected_method")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  book             Book              @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  pages            Page[]
+  chunks           BookChunk[]
+  highlights       Highlight[]
+  notes            Note[]
+  chatSessions     ChatSession[]
+  chatMessages     ChatMessage[]
+  chapterSummaries ChapterSummary[]
+  readingProgress  ReadingProgress[]
+  readingSessions  ReadingSession[]
+
+  @@unique([bookId, chapterIndex], map: "chapters_book_id_chapter_index_key")
+  @@index([bookId], map: "chapters_book_id_idx")
+  @@map("chapters")
+}
+
+model Page {
+  id               String               @id @default(uuid()) @db.Uuid
+  bookId           String               @map("book_id") @db.Uuid
+  chapterId        String?              @map("chapter_id") @db.Uuid
+  pageNumber       Int                  @map("page_number")
+  text             String?              @db.Text
+  textHash         String?              @map("text_hash") @db.VarChar(128)
+  extractionStatus PageExtractionStatus @default(PENDING) @map("extraction_status")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  book    Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+
+  @@unique([bookId, pageNumber], map: "pages_book_id_page_number_key")
+  @@index([bookId, pageNumber], map: "pages_book_id_page_number_idx")
+  @@index([chapterId], map: "pages_chapter_id_idx")
+  @@map("pages")
+}
+
+model BookChunk {
+  id              String   @id @default(uuid()) @db.Uuid
+  bookId          String   @map("book_id") @db.Uuid
+  chapterId       String?  @map("chapter_id") @db.Uuid
+  pageStart       Int      @map("page_start")
+  pageEnd         Int      @map("page_end")
+  chunkIndex      Int      @map("chunk_index")
+  content         String   @db.Text
+  tokenCount      Int?     @map("token_count")
+  textHash        String?  @map("text_hash") @db.VarChar(128)
+  chunkingVersion String   @map("chunking_version") @db.VarChar(80)
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  book       Book        @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter    Chapter?    @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  highlights Highlight[]
+  notes      Note[]
+
+  @@unique([bookId, chunkIndex, chunkingVersion], map: "book_chunks_book_id_chunk_index_chunking_version_key")
+  @@index([bookId, chapterId], map: "book_chunks_book_id_chapter_id_idx")
+  @@index([chapterId], map: "book_chunks_chapter_id_idx")
+  @@map("book_chunks")
+}
+
+model Highlight {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  userBookId   String    @map("user_book_id") @db.Uuid
+  bookId       String    @map("book_id") @db.Uuid
+  chapterId    String?   @map("chapter_id") @db.Uuid
+  pageStart    Int       @map("page_start")
+  pageEnd      Int       @map("page_end")
+  chunkId      String?   @map("chunk_id") @db.Uuid
+  selectedText String    @map("selected_text") @db.Text
+  color        String    @default("yellow") @db.VarChar(40)
+  anchor       Json
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userBook UserBook   @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  book     Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter  Chapter?   @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  chunk    BookChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+  notes    Note[]
+
+  @@index([userId, userBookId, createdAt], map: "highlights_user_id_user_book_id_created_at_idx")
+  @@index([bookId], map: "highlights_book_id_idx")
+  @@index([chapterId], map: "highlights_chapter_id_idx")
+  @@index([chunkId], map: "highlights_chunk_id_idx")
+  @@map("highlights")
+}
+
+model Note {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  userBookId  String    @map("user_book_id") @db.Uuid
+  bookId      String    @map("book_id") @db.Uuid
+  chapterId   String?   @map("chapter_id") @db.Uuid
+  pageNumber  Int?      @map("page_number")
+  chunkId     String?   @map("chunk_id") @db.Uuid
+  highlightId String?   @map("highlight_id") @db.Uuid
+  content     String    @db.Text
+  noteType    NoteType  @default(MARGIN_NOTE) @map("note_type")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userBook  UserBook   @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  book      Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter   Chapter?   @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  chunk     BookChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+  highlight Highlight? @relation(fields: [highlightId], references: [id], onDelete: SetNull)
+
+  @@index([userId, userBookId, createdAt], map: "notes_user_id_user_book_id_created_at_idx")
+  @@index([bookId], map: "notes_book_id_idx")
+  @@index([chapterId], map: "notes_chapter_id_idx")
+  @@index([chunkId], map: "notes_chunk_id_idx")
+  @@index([highlightId], map: "notes_highlight_id_idx")
+  @@map("notes")
+}
+
+model ChatSession {
+  id         String          @id @default(uuid()) @db.Uuid
+  userId     String          @map("user_id") @db.Uuid
+  userBookId String          @map("user_book_id") @db.Uuid
+  bookId     String          @map("book_id") @db.Uuid
+  chapterId  String?         @map("chapter_id") @db.Uuid
+  title      String?         @db.Text
+  mode       ChatSessionMode @default(GENERAL_READING_HELP)
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+  archivedAt DateTime?       @map("archived_at")
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userBook UserBook      @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  book     Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter  Chapter?      @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
+  @@index([userId, userBookId, updatedAt], map: "chat_sessions_user_id_user_book_id_updated_at_idx")
+  @@index([bookId], map: "chat_sessions_book_id_idx")
+  @@index([chapterId], map: "chat_sessions_chapter_id_idx")
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id                String          @id @default(uuid()) @db.Uuid
+  sessionId         String          @map("session_id") @db.Uuid
+  userId            String          @map("user_id") @db.Uuid
+  role              ChatMessageRole
+  content           String          @db.Text
+  selectedText      String?         @map("selected_text") @db.Text
+  pageNumber        Int?            @map("page_number")
+  chapterId         String?         @map("chapter_id") @db.Uuid
+  contextSnapshotId String?         @map("context_snapshot_id") @db.Uuid
+  modelProvider     String?         @map("model_provider") @db.VarChar(80)
+  modelName         String?         @map("model_name") @db.VarChar(120)
+  metadata          Json?
+  createdAt         DateTime        @default(now()) @map("created_at")
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter Chapter?    @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt], map: "chat_messages_session_id_created_at_idx")
+  @@index([userId], map: "chat_messages_user_id_idx")
+  @@index([chapterId], map: "chat_messages_chapter_id_idx")
+  @@map("chat_messages")
+}
+
+model ChapterSummary {
+  id             String             @id @default(uuid()) @db.Uuid
+  userId         String             @map("user_id") @db.Uuid
+  bookId         String             @map("book_id") @db.Uuid
+  chapterId      String             @map("chapter_id") @db.Uuid
+  summary        String             @db.Text
+  summaryType    ChapterSummaryType @map("summary_type")
+  modelProvider  String?            @map("model_provider") @db.VarChar(80)
+  modelName      String?            @map("model_name") @db.VarChar(120)
+  promptVersion  String?            @map("prompt_version") @db.VarChar(80)
+  sourceChunkIds Json?              @map("source_chunk_ids")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book    Book    @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@index([userId, bookId, chapterId], map: "chapter_summaries_user_id_book_id_chapter_id_idx")
+  @@map("chapter_summaries")
+}
+
+model ReadingProgress {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  userBookId       String    @unique(map: "reading_progress_user_book_id_key") @map("user_book_id") @db.Uuid
+  bookId           String    @map("book_id") @db.Uuid
+  currentPage      Int       @default(1) @map("current_page")
+  currentChapterId String?   @map("current_chapter_id") @db.Uuid
+  progressPercent  Decimal   @default(0) @map("progress_percent") @db.Decimal(5, 2)
+  lastReadAt       DateTime? @map("last_read_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userBook       UserBook @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  book           Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  currentChapter Chapter? @relation(fields: [currentChapterId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, userBookId], map: "reading_progress_user_id_user_book_id_key")
+  @@index([bookId], map: "reading_progress_book_id_idx")
+  @@index([currentChapterId], map: "reading_progress_current_chapter_id_idx")
+  @@map("reading_progress")
+}
+
+model ReadingSession {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  userBookId      String    @map("user_book_id") @db.Uuid
+  bookId          String    @map("book_id") @db.Uuid
+  chapterId       String?   @map("chapter_id") @db.Uuid
+  startedAt       DateTime  @default(now()) @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  startPage       Int?      @map("start_page")
+  endPage         Int?      @map("end_page")
+  durationSeconds Int?      @map("duration_seconds")
+  pagesRead       Int?      @map("pages_read")
+  metadata        Json?
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userBook UserBook @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  book     Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapter  Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+
+  @@index([userId, userBookId, startedAt], map: "reading_sessions_user_id_user_book_id_started_at_idx")
+  @@index([bookId], map: "reading_sessions_book_id_idx")
+  @@index([chapterId], map: "reading_sessions_chapter_id_idx")
+  @@map("reading_sessions")
+}
+
+model UserMemory {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  type       UserMemoryType
+  content    String           @db.Text
+  sourceType MemorySourceType @map("source_type")
+  sourceId   String?          @map("source_id") @db.Uuid
+  confidence Float            @default(0.5)
+  status     MemoryStatus     @default(ACTIVE)
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  lastUsedAt DateTime?        @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, status], map: "user_memory_user_id_type_status_idx")
+  @@index([sourceType, sourceId], map: "user_memory_source_type_source_id_idx")
+  @@map("user_memory")
+}
