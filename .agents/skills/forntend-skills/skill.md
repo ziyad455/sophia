@@ -1,0 +1,1 @@
+read this when ever you are going to chenage anything in the ffrontend. It will help you understand the product and make better decisions.

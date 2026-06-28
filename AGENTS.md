@@ -20,6 +20,34 @@ Every feature must answer:
 Does this improve the philosophy reading experience?
 
 If the answer is no, do not build it.
+Before starting any task in this project, make sure you understand the project context from the agent/context files.
+
+Always treat the `.agents/` folder, `AGENTS.md`, `docs/context/`, and `DESIGN.md` as the source of truth for Sophia’s product direction, design rules, planning principles, and agent skills.
+
+You do not need to reread every context file before every small task if you already have enough relevant context.
+
+However, you must read or refresh the relevant context when:
+
+* you are missing context
+* the task is important or architectural
+* the task affects product direction
+* the task affects design, UI, UX, themes, or typography
+* the task affects AI behavior, memory, interpretation, or reading experience
+* the task involves creating or updating agent skills
+* the task could change the long-term structure of the project
+
+For normal implementation tasks, load only the relevant context and skill files instead of reading everything.
+
+Use the right skill for the task when one exists.
+
+Do not jump into implementation without understanding the product goal.
+
+Sophia is a philosophy reading companion, not a generic chatbot, not a generic PDF viewer, and not a SaaS dashboard.
+
+Every decision should protect the reading experience and answer:
+
+Does this improve the philosophy reading experience?
+
 
 ## Tech Stack
 
