@@ -1,1 +1,77 @@
+@config "../tailwind.config.js";
+
 @import "tailwindcss";
+
+:root {
+  --color-bg-glow: rgba(214, 177, 106, 0.08);
+  --color-bg: #071019;
+  --color-surface: #101a22;
+  --color-text: #f3e4c7;
+  --color-text-muted: #b9a98e;
+  --color-border: rgba(184, 137, 61, 0.35);
+  --color-primary: #b8893d;
+  --color-accent: #d6b16a;
+  --color-paper: #efe1c7;
+  --color-paper-text: #071019;
+}
+
+:root[data-theme="warm-paper"] {
+  --color-bg-glow: rgba(196, 154, 108, 0.16);
+  --color-bg: #f4ebdd;
+  --color-surface: #fff8ed;
+  --color-text: #2b2118;
+  --color-text-muted: #6f6255;
+  --color-border: #ded0bd;
+  --color-primary: #8b5e34;
+  --color-accent: #c49a6c;
+  --color-paper: #fff8ed;
+  --color-paper-text: #2b2118;
+}
+
+:root[data-theme="night-study"] {
+  --color-bg-glow: rgba(201, 168, 106, 0.1);
+  --color-bg: #111111;
+  --color-surface: #1a1a1a;
+  --color-text: #ede7dd;
+  --color-text-muted: #a89f94;
+  --color-border: #2c2c2c;
+  --color-primary: #c9a86a;
+  --color-accent: #8e735b;
+  --color-paper: #202020;
+  --color-paper-text: #ede7dd;
+}
+
+:root[data-theme="printed-ink"] {
+  --color-bg-glow: rgba(214, 177, 106, 0.08);
+  --color-bg: #071019;
+  --color-surface: #101a22;
+  --color-text: #f3e4c7;
+  --color-text-muted: #b9a98e;
+  --color-border: rgba(184, 137, 61, 0.35);
+  --color-primary: #b8893d;
+  --color-accent: #d6b16a;
+  --color-paper: #efe1c7;
+  --color-paper-text: #071019;
+}
+
+@layer base {
+  body {
+    background:
+      radial-gradient(circle at top, var(--color-bg-glow), transparent 35%),
+      var(--color-bg);
+    color: var(--color-text);
+  }
+}
+
+@layer utilities {
+  .printed-gold {
+    color: var(--color-primary);
+    text-shadow: 0 0 1px rgba(243, 228, 199, 0.25);
+  }
+
+  .paper-card {
+    background: var(--color-paper);
+    color: var(--color-paper-text);
+    border: 1px solid rgba(111, 81, 48, 0.2);
+  }
+}
