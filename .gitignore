@@ -9,6 +9,9 @@ backend/generated/
 # Environment files
 .env
 .env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
 
 # Logs
 *.log
