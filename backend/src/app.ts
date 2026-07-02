@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { config } from "./config";
 import { checkDatabaseHealth } from "./db";
+import { createAuthRouter } from "./auth/auth.routes";
+import { HttpError } from "./http/errors";
 
 const express = require("express");
 
@@ -19,7 +21,7 @@ export function createApp() {
 
   app.use((req: Request, res: Response, next: Next) => {
     res.setHeader("Access-Control-Allow-Origin", config.frontendOrigin);
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
 
     if (req.method === "OPTIONS") {
@@ -31,6 +33,7 @@ export function createApp() {
   });
 
   app.use(express.json());
+  app.use("/auth", createAuthRouter());
 
   app.get("/health", (_req: Request, res: Response) => {
     res.json({
@@ -58,6 +61,16 @@ export function createApp() {
   });
 
   app.use((error: unknown, _req: Request, res: Response, _next: Next) => {
+    if (error instanceof HttpError) {
+      res.status(error.statusCode).json({
+        status: "error",
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+      return;
+    }
+
     const message = error instanceof Error ? error.message : "Unexpected server error.";
 
     res.status(500).json({
