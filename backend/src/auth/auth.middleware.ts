@@ -41,3 +41,28 @@ export async function requireAuth(
     next(error);
   }
 }
+
+export async function optionalAuth(
+  req: ApiRequest,
+  _res: ApiResponse,
+  next: ApiNext,
+): Promise<void> {
+  try {
+    const token = readBearerToken(req.headers.authorization) ?? readAccessTokenCookie(req);
+
+    if (!token) {
+      next();
+      return;
+    }
+
+    const session = await getUserForSessionToken(token);
+    req.auth = {
+      userId: session.userId,
+      sessionId: session.sessionId,
+    };
+
+    next();
+  } catch {
+    next();
+  }
+}

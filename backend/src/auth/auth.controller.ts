@@ -5,6 +5,7 @@ import {
   getCurrentUser,
   loginWithEmail,
   refreshSession,
+  revokeSessionByRefreshToken,
   registerWithEmail,
   revokeSession,
 } from "./auth.service";
@@ -43,13 +44,15 @@ export async function refresh(req: ApiRequest, res: ApiResponse): Promise<void> 
 }
 
 export async function logout(req: ApiRequest, res: ApiResponse): Promise<void> {
-  if (!req.auth) {
-    res.sendStatus(204);
-    return;
+  const dto = parseLogoutDto(req.body ?? {});
+  const refreshToken = dto.refreshToken ?? readRefreshTokenCookie(req);
+
+  if (req.auth) {
+    await revokeSession(req.auth.sessionId);
+  } else if (refreshToken) {
+    await revokeSessionByRefreshToken(refreshToken);
   }
 
-  const dto = parseLogoutDto(req.body ?? {});
-  await revokeSession(req.auth.sessionId, dto.refreshToken ?? readRefreshTokenCookie(req));
   clearAuthCookies(res);
   res.sendStatus(204);
 }

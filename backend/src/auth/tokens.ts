@@ -12,9 +12,11 @@ export type AccessTokenPayload = {
   iat: number;
   iss: string;
   jti: string;
+  sessionId: string;
   sid: string;
   sub: string;
   typ: typeof ACCESS_TOKEN_TYPE;
+  userId: string;
 };
 
 export type GeneratedAccessToken = {
@@ -67,9 +69,11 @@ export function createAccessToken(userId: string, sessionId: string, issuedAt = 
     iat: Math.floor(issuedAt.getTime() / 1000),
     iss: config.auth.jwtIssuer,
     jti: createTokenId(),
+    sessionId,
     sid: sessionId,
     sub: userId,
     typ: ACCESS_TOKEN_TYPE,
+    userId,
   };
   const header = {
     alg: JWT_ALGORITHM,
@@ -85,7 +89,13 @@ export function createAccessToken(userId: string, sessionId: string, issuedAt = 
 }
 
 export function verifyAccessToken(token: string, now = new Date()): AccessTokenPayload {
-  const [encodedHeader, encodedPayload, signature] = token.split(".");
+  const tokenSegments = token.split(".");
+
+  if (tokenSegments.length !== 3) {
+    throw unauthorized("Access token is malformed.");
+  }
+
+  const [encodedHeader, encodedPayload, signature] = tokenSegments;
 
   if (!encodedHeader || !encodedPayload || !signature) {
     throw unauthorized("Access token is malformed.");
@@ -116,6 +126,10 @@ export function verifyAccessToken(token: string, now = new Date()): AccessTokenP
     typeof payload.sub !== "string" ||
     typeof payload.sid !== "string" ||
     typeof payload.jti !== "string" ||
+    typeof payload.userId !== "string" ||
+    typeof payload.sessionId !== "string" ||
+    payload.userId !== payload.sub ||
+    payload.sessionId !== payload.sid ||
     !payload.sub ||
     !payload.sid ||
     !payload.jti
