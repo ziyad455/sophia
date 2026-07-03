@@ -9,13 +9,34 @@ function readBearerToken(header: string | string[] | undefined): string | undefi
   }
 
   const value = Array.isArray(header) ? header[0] : header;
-  const [scheme, token] = value.split(" ");
+  const [scheme, token, extra] = value.trim().split(/\s+/);
 
-  if (scheme?.toLowerCase() !== "bearer" || !token) {
-    return undefined;
+  if (scheme?.toLowerCase() !== "bearer" || !token || extra) {
+    throw unauthorized("Authorization header must use the Bearer token format.");
   }
 
   return token.trim();
+}
+
+function readAccessToken(req: ApiRequest): string | undefined {
+  const bearerToken = readBearerToken(req.headers.authorization);
+
+  if (bearerToken) {
+    return bearerToken;
+  }
+
+  return readAccessTokenCookie(req);
+}
+
+async function attachAuthContext(req: ApiRequest, token: string): Promise<void> {
+  const session = await getUserForSessionToken(token);
+  req.auth = {
+    userId: session.userId,
+    sessionId: session.sessionId,
+  };
+
+  // Future user-owned services should scope queries with req.auth.userId.
+  // Example: where: { userId: req.auth.userId }
 }
 
 export async function requireAuth(
@@ -24,17 +45,13 @@ export async function requireAuth(
   next: ApiNext,
 ): Promise<void> {
   try {
-    const token = readBearerToken(req.headers.authorization) ?? readAccessTokenCookie(req);
+    const token = readAccessToken(req);
 
     if (!token) {
       throw unauthorized();
     }
 
-    const session = await getUserForSessionToken(token);
-    req.auth = {
-      userId: session.userId,
-      sessionId: session.sessionId,
-    };
+    await attachAuthContext(req, token);
 
     next();
   } catch (error) {
@@ -48,18 +65,14 @@ export async function optionalAuth(
   next: ApiNext,
 ): Promise<void> {
   try {
-    const token = readBearerToken(req.headers.authorization) ?? readAccessTokenCookie(req);
+    const token = readAccessToken(req);
 
     if (!token) {
       next();
       return;
     }
 
-    const session = await getUserForSessionToken(token);
-    req.auth = {
-      userId: session.userId,
-      sessionId: session.sessionId,
-    };
+    await attachAuthContext(req, token);
 
     next();
   } catch {

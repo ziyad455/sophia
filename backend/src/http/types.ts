@@ -20,6 +20,10 @@ export type AuthContext = {
   sessionId: string;
 };
 
+export type AuthenticatedApiRequest<TBody = unknown> = ApiRequest<TBody> & {
+  auth: AuthContext;
+};
+
 export type ApiHandler<TBody = unknown> = (
   req: ApiRequest<TBody>,
   res: ApiResponse,
