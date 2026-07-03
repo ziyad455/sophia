@@ -1,4 +1,5 @@
 import type { ApiRequest, ApiResponse } from "../http/types";
+import { clearAuthCookies, readRefreshTokenCookie, setAuthCookies } from "./cookies";
 import { parseLoginDto, parseLogoutDto, parseRefreshTokenDto, parseRegisterDto } from "./auth.dto";
 import {
   getCurrentUser,
@@ -23,16 +24,21 @@ function getRequestMetadata(req: ApiRequest): RequestMetadata {
 
 export async function register(req: ApiRequest, res: ApiResponse): Promise<void> {
   const result = await registerWithEmail(parseRegisterDto(req.body), getRequestMetadata(req));
+  setAuthCookies(res, result.tokens);
   res.status(201).json(result);
 }
 
 export async function login(req: ApiRequest, res: ApiResponse): Promise<void> {
   const result = await loginWithEmail(parseLoginDto(req.body), getRequestMetadata(req));
+  setAuthCookies(res, result.tokens);
   res.status(200).json(result);
 }
 
 export async function refresh(req: ApiRequest, res: ApiResponse): Promise<void> {
-  const result = await refreshSession(parseRefreshTokenDto(req.body));
+  const cookieRefreshToken = readRefreshTokenCookie(req);
+  const dto = cookieRefreshToken ? { refreshToken: cookieRefreshToken } : parseRefreshTokenDto(req.body);
+  const result = await refreshSession(dto);
+  setAuthCookies(res, result.tokens);
   res.status(200).json(result);
 }
 
@@ -43,7 +49,8 @@ export async function logout(req: ApiRequest, res: ApiResponse): Promise<void> {
   }
 
   const dto = parseLogoutDto(req.body ?? {});
-  await revokeSession(req.auth.sessionId, dto.refreshToken);
+  await revokeSession(req.auth.sessionId, dto.refreshToken ?? readRefreshTokenCookie(req));
+  clearAuthCookies(res);
   res.sendStatus(204);
 }
 

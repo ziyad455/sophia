@@ -1,14 +1,19 @@
 import type { User } from "../../generated/prisma/client";
 import { AuthProvider } from "../../generated/prisma/client";
+import { config } from "../config";
 import { prisma } from "../db/prisma";
 import { conflict, unauthorized } from "../http/errors";
 import type { LoginDto, RefreshTokenDto, RegisterDto } from "./auth.dto";
 import type { AuthResponse, PublicUser, RequestMetadata } from "./auth.types";
 import { hashPassword, verifyPassword } from "./password";
-import { addDays, createOpaqueToken, hashToken } from "./tokens";
-
-const ACCESS_TOKEN_TTL_DAYS = 7;
-const REFRESH_TOKEN_TTL_DAYS = 30;
+import {
+  addDays,
+  createAccessToken,
+  createOpaqueToken,
+  createTokenId,
+  hashToken,
+  verifyAccessToken,
+} from "./tokens";
 
 type SessionTokens = {
   accessToken: string;
@@ -51,16 +56,17 @@ function isUniqueConstraintError(error: unknown): boolean {
 
 async function createSession(userId: string, metadata: RequestMetadata): Promise<SessionTokens> {
   const now = new Date();
-  const accessToken = createOpaqueToken();
+  const sessionId = createTokenId();
+  const accessToken = createAccessToken(userId, sessionId, now);
   const refreshToken = createOpaqueToken();
-  const accessTokenExpiresAt = addDays(now, ACCESS_TOKEN_TTL_DAYS);
-  const refreshTokenExpiresAt = addDays(now, REFRESH_TOKEN_TTL_DAYS);
+  const refreshTokenExpiresAt = addDays(now, config.auth.refreshTokenTtlDays);
 
   await prisma.session.create({
     data: {
+      id: sessionId,
       userId,
-      sessionTokenHash: hashToken(accessToken),
-      expiresAt: accessTokenExpiresAt,
+      sessionTokenHash: hashToken(accessToken.payload.jti),
+      expiresAt: accessToken.expiresAt,
       userAgent: metadata.userAgent,
       ipAddress: metadata.ipAddress,
       refreshTokens: {
@@ -74,9 +80,9 @@ async function createSession(userId: string, metadata: RequestMetadata): Promise
   });
 
   return {
-    accessToken,
+    accessToken: accessToken.token,
     refreshToken,
-    accessTokenExpiresAt,
+    accessTokenExpiresAt: accessToken.expiresAt,
     refreshTokenExpiresAt,
   };
 }
@@ -169,7 +175,6 @@ export async function refreshSession(dto: RefreshTokenDto): Promise<AuthResponse
   if (
     !refreshTokenRecord ||
     refreshTokenRecord.revokedAt ||
-    refreshTokenRecord.rotatedAt ||
     refreshTokenRecord.expiresAt <= now ||
     refreshTokenRecord.session.revokedAt ||
     refreshTokenRecord.session.expiresAt <= now ||
@@ -178,10 +183,33 @@ export async function refreshSession(dto: RefreshTokenDto): Promise<AuthResponse
     throw unauthorized("Refresh token is invalid or expired.");
   }
 
-  const accessToken = createOpaqueToken();
+  if (refreshTokenRecord.rotatedAt) {
+    await prisma.$transaction([
+      prisma.session.update({
+        where: {
+          id: refreshTokenRecord.sessionId,
+        },
+        data: {
+          revokedAt: now,
+        },
+      }),
+      prisma.refreshToken.updateMany({
+        where: {
+          sessionId: refreshTokenRecord.sessionId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: now,
+        },
+      }),
+    ]);
+
+    throw unauthorized("Refresh token has already been used.");
+  }
+
+  const jwtAccessToken = createAccessToken(refreshTokenRecord.userId, refreshTokenRecord.sessionId, now);
   const refreshToken = createOpaqueToken();
-  const accessTokenExpiresAt = addDays(now, ACCESS_TOKEN_TTL_DAYS);
-  const refreshTokenExpiresAt = addDays(now, REFRESH_TOKEN_TTL_DAYS);
+  const refreshTokenExpiresAt = addDays(now, config.auth.refreshTokenTtlDays);
 
   await prisma.$transaction([
     prisma.refreshToken.update({
@@ -197,8 +225,8 @@ export async function refreshSession(dto: RefreshTokenDto): Promise<AuthResponse
         id: refreshTokenRecord.sessionId,
       },
       data: {
-        sessionTokenHash: hashToken(accessToken),
-        expiresAt: accessTokenExpiresAt,
+        sessionTokenHash: hashToken(jwtAccessToken.payload.jti),
+        expiresAt: jwtAccessToken.expiresAt,
       },
     }),
     prisma.refreshToken.create({
@@ -212,9 +240,9 @@ export async function refreshSession(dto: RefreshTokenDto): Promise<AuthResponse
   ]);
 
   return serializeAuthResponse(refreshTokenRecord.user, {
-    accessToken,
+    accessToken: jwtAccessToken.token,
     refreshToken,
-    accessTokenExpiresAt,
+    accessTokenExpiresAt: jwtAccessToken.expiresAt,
     refreshTokenExpiresAt,
   });
 }
@@ -254,16 +282,24 @@ export async function getUserForSessionToken(accessToken: string): Promise<{
   userId: string;
   sessionId: string;
 }> {
+  const payload = verifyAccessToken(accessToken);
   const session = await prisma.session.findUnique({
     where: {
-      sessionTokenHash: hashToken(accessToken),
+      id: payload.sid,
     },
     include: {
       user: true,
     },
   });
 
-  if (!session || session.revokedAt || session.expiresAt <= new Date() || session.user.deletedAt) {
+  if (
+    !session ||
+    session.userId !== payload.sub ||
+    session.sessionTokenHash !== hashToken(payload.jti) ||
+    session.revokedAt ||
+    session.expiresAt <= new Date() ||
+    session.user.deletedAt
+  ) {
     throw unauthorized();
   }
 
