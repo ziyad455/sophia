@@ -1,4 +1,5 @@
 import type { ApiRequest, ApiResponse } from "../http/types";
+import { unauthorized } from "../http/errors";
 import { clearAuthCookies, readRefreshTokenCookie, setAuthCookies } from "./cookies";
 import { parseLoginDto, parseLogoutDto, parseRefreshTokenDto, parseRegisterDto } from "./auth.dto";
 import {
@@ -59,12 +60,7 @@ export async function logout(req: ApiRequest, res: ApiResponse): Promise<void> {
 
 export async function me(req: ApiRequest, res: ApiResponse): Promise<void> {
   if (!req.auth) {
-    res.status(401).json({
-      status: "error",
-      code: "unauthorized",
-      message: "Authentication is required.",
-    });
-    return;
+    throw unauthorized();
   }
 
   const user = await getCurrentUser(req.auth.userId);
