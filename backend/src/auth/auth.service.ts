@@ -66,7 +66,7 @@ async function createSession(userId: string, metadata: RequestMetadata): Promise
       id: sessionId,
       userId,
       sessionTokenHash: hashToken(accessToken.payload.jti),
-      expiresAt: accessToken.expiresAt,
+      expiresAt: refreshTokenExpiresAt,
       userAgent: metadata.userAgent,
       ipAddress: metadata.ipAddress,
       refreshTokens: {
@@ -175,10 +175,7 @@ export async function refreshSession(dto: RefreshTokenDto): Promise<AuthResponse
   if (
     !refreshTokenRecord ||
     refreshTokenRecord.revokedAt ||
-    refreshTokenRecord.expiresAt <= now ||
-    refreshTokenRecord.session.revokedAt ||
-    refreshTokenRecord.session.expiresAt <= now ||
-    refreshTokenRecord.user.deletedAt
+    refreshTokenRecord.expiresAt <= now
   ) {
     throw unauthorized("Refresh token is invalid or expired.");
   }
@@ -207,6 +204,14 @@ export async function refreshSession(dto: RefreshTokenDto): Promise<AuthResponse
     throw unauthorized("Refresh token has already been used.");
   }
 
+  if (
+    refreshTokenRecord.session.revokedAt ||
+    refreshTokenRecord.session.expiresAt <= now ||
+    refreshTokenRecord.user.deletedAt
+  ) {
+    throw unauthorized("Refresh token is invalid or expired.");
+  }
+
   const jwtAccessToken = createAccessToken(refreshTokenRecord.userId, refreshTokenRecord.sessionId, now);
   const refreshToken = createOpaqueToken();
   const refreshTokenExpiresAt = addDays(now, config.auth.refreshTokenTtlDays);
@@ -226,7 +231,7 @@ export async function refreshSession(dto: RefreshTokenDto): Promise<AuthResponse
       },
       data: {
         sessionTokenHash: hashToken(jwtAccessToken.payload.jti),
-        expiresAt: jwtAccessToken.expiresAt,
+        expiresAt: refreshTokenExpiresAt,
       },
     }),
     prisma.refreshToken.create({
@@ -275,6 +280,20 @@ export async function revokeSession(sessionId: string, refreshToken?: string): P
       },
     }),
   ]);
+}
+
+export async function revokeSessionByRefreshToken(refreshToken: string): Promise<void> {
+  const refreshTokenRecord = await prisma.refreshToken.findUnique({
+    where: {
+      tokenHash: hashToken(refreshToken),
+    },
+  });
+
+  if (!refreshTokenRecord) {
+    return;
+  }
+
+  await revokeSession(refreshTokenRecord.sessionId);
 }
 
 export async function getUserForSessionToken(accessToken: string): Promise<{
