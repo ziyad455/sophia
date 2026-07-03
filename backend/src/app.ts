@@ -23,6 +23,7 @@ export function createApp() {
     res.setHeader("Access-Control-Allow-Origin", config.frontendOrigin);
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
 
     if (req.method === "OPTIONS") {
       res.sendStatus(204);

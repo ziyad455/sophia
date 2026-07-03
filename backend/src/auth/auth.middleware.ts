@@ -1,5 +1,6 @@
 import { unauthorized } from "../http/errors";
 import type { ApiNext, ApiRequest, ApiResponse } from "../http/types";
+import { readAccessTokenCookie } from "./cookies";
 import { getUserForSessionToken } from "./auth.service";
 
 function readBearerToken(header: string | string[] | undefined): string | undefined {
@@ -23,7 +24,7 @@ export async function requireAuth(
   next: ApiNext,
 ): Promise<void> {
   try {
-    const token = readBearerToken(req.headers.authorization);
+    const token = readBearerToken(req.headers.authorization) ?? readAccessTokenCookie(req);
 
     if (!token) {
       throw unauthorized();
