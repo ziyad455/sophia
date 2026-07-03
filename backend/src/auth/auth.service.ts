@@ -1,5 +1,5 @@
-import type { User } from "../../generated/prisma/client";
-import { AuthProvider } from "../../generated/prisma/client";
+import type { User } from "@prisma/client";
+import { AuthProvider } from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db/prisma";
 import { conflict, unauthorized } from "../http/errors";
