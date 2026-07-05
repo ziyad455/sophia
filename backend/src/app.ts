@@ -14,13 +14,25 @@ type Response = ServerResponse & {
 };
 type Next = (error?: unknown) => void;
 
+function getRequestOrigin(req: Request): string | undefined {
+  const origin = req.headers.origin;
+
+  return Array.isArray(origin) ? origin[0] : origin;
+}
+
 export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
 
   app.use((req: Request, res: Response, next: Next) => {
-    res.setHeader("Access-Control-Allow-Origin", config.frontendOrigin);
+    const origin = getRequestOrigin(req);
+
+    if (origin && config.frontendOrigins.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    }
+
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Credentials", "true");

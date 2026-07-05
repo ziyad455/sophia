@@ -1,6 +1,7 @@
 const DEFAULT_PORT = 3000;
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const DEFAULT_REFRESH_TOKEN_TTL_DAYS = 30;
+const DEFAULT_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
 
 type CookieSameSite = "lax" | "strict" | "none";
 
@@ -70,13 +71,34 @@ function readJwtSecret(nodeEnv: string): string {
   return "development-only-change-me";
 }
 
+function readFrontendOrigins(): string[] {
+  const value = process.env.FRONTEND_ORIGINS ?? process.env.FRONTEND_ORIGIN;
+
+  if (!value) {
+    return DEFAULT_FRONTEND_ORIGINS;
+  }
+
+  const origins = value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length === 0) {
+    throw new Error("FRONTEND_ORIGINS must include at least one origin.");
+  }
+
+  return origins;
+}
+
 const nodeEnv = process.env.NODE_ENV ?? "development";
+const frontendOrigins = readFrontendOrigins();
 
 export const config = {
   nodeEnv,
   host: process.env.HOST ?? "127.0.0.1",
   port: readPort(process.env.PORT),
-  frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://127.0.0.1:5173",
+  frontendOrigin: frontendOrigins[0],
+  frontendOrigins,
   databaseUrl: process.env.DATABASE_URL,
   auth: {
     jwtAccessSecret: readJwtSecret(nodeEnv),
