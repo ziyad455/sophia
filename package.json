@@ -1,0 +1,29 @@
+{
+  "name": "sophia",
+  "version": "1.0.0",
+  "description": "Sophia is an AI-powered philosophy reading companion.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix frontend\" \"npm start --prefix backend\"",
+    "frontend": "npm run dev --prefix frontend",
+    "backend": "npm start --prefix backend",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ziyad455/sophia.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ziyad455/sophia/issues"
+  },
+  "homepage": "https://github.com/ziyad455/sophia#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.3"
+  }
+}
