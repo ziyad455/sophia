@@ -22,6 +22,10 @@ export function unauthorized(message = "Authentication is required."): HttpError
   return new HttpError(401, message, "unauthorized");
 }
 
+export function notFound(message = "Resource not found."): HttpError {
+  return new HttpError(404, message, "not_found");
+}
+
 export function forbidden(message = "You do not have access to this resource."): HttpError {
   return new HttpError(403, message, "forbidden");
 }
