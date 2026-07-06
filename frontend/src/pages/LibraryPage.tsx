@@ -2,20 +2,14 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../auth'
 import { config } from '../config'
 import { navigate } from '../routing/navigation'
+import { applyTheme, readStoredTheme, themes, type ThemeId } from '../theme'
 
 type ApiStatus = 'checking' | 'online' | 'offline'
-type ThemeId = 'printed-ink' | 'warm-paper' | 'night-study'
-
-const themes: Array<{ id: ThemeId; label: string }> = [
-  { id: 'printed-ink', label: 'Printed Ink' },
-  { id: 'warm-paper', label: 'Warm Paper' },
-  { id: 'night-study', label: 'Night Study' },
-]
 
 export function LibraryPage() {
   const { logout, user } = useAuth()
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking')
-  const [theme, setTheme] = useState<ThemeId>('printed-ink')
+  const [theme, setTheme] = useState<ThemeId>(() => readStoredTheme())
 
   useEffect(() => {
     const controller = new AbortController()
@@ -36,7 +30,7 @@ export function LibraryPage() {
   }, [])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
+    applyTheme(theme)
   }, [theme])
 
   async function handleLogout() {
@@ -60,8 +54,19 @@ export function LibraryPage() {
           <p className="mt-3 mb-0 text-sm text-sophia-text-muted">{user?.email}</p>
         </div>
 
+        <a
+          className="mt-7 flex min-h-11 w-full items-center justify-center rounded-lg bg-sophia-primary px-4 py-2.5 text-sm font-bold text-sophia-bg no-underline transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary focus-visible:ring-offset-2 focus-visible:ring-offset-sophia-surface"
+          href="/upload"
+          onClick={(event) => {
+            event.preventDefault()
+            navigate('/upload')
+          }}
+        >
+          Add book
+        </a>
+
         <nav
-          className="mt-7 grid gap-2 sm:grid-cols-3 lg:grid-cols-1"
+          className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-1"
           aria-label="Books"
         >
           <a
