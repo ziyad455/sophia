@@ -10,3 +10,7 @@ export type LibraryBook = {
   addedAt: string;
   lastOpenedAt: string | null;
 };
+
+export type UploadedLibraryBook = Omit<LibraryBook, "id"> & {
+  userBookId: string;
+};
