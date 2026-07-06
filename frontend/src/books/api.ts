@@ -1,5 +1,9 @@
 import { config } from '../config'
-import type { UploadBookPayload, UploadBookResponse } from './types'
+import type { LibraryBook, ListBooksResponse, UploadBookPayload, UploadBookResponse } from './types'
+
+type RequestOptions = {
+  signal?: AbortSignal
+}
 
 export class BooksApiError extends Error {
   readonly status: number
@@ -29,6 +33,57 @@ function readErrorMessage(value: unknown): string | undefined {
   return typeof message === 'string' && message.trim() ? message : undefined
 }
 
+function readString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback
+}
+
+function readNullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function readNullableNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function normalizeBook(value: unknown, index: number): LibraryBook | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const legacyId = readString(value.id)
+  const userBookId = readString(value.userBookId, legacyId || `book-${index}`)
+  const bookId = readString(value.bookId)
+  const title = readString(value.title, 'Untitled book')
+  const coverUrl = readNullableString(value.coverUrl) ?? (userBookId ? `/books/${userBookId}/cover` : null)
+
+  return {
+    id: legacyId || undefined,
+    userBookId,
+    bookId,
+    title,
+    author: readNullableString(value.author),
+    language: readString(value.language, 'en'),
+    status: readString(value.status, 'active'),
+    processingStatus: readString(value.processingStatus, 'uploaded'),
+    pageCount: readNullableNumber(value.pageCount),
+    addedAt: readString(value.addedAt, new Date().toISOString()),
+    lastOpenedAt: readNullableString(value.lastOpenedAt),
+    coverUrl,
+  }
+}
+
+function normalizeListBooksResponse(value: unknown): ListBooksResponse {
+  if (!isRecord(value) || !Array.isArray(value.books)) {
+    return { books: [] }
+  }
+
+  return {
+    books: value.books
+      .map((book, index) => normalizeBook(book, index))
+      .filter((book): book is LibraryBook => Boolean(book)),
+  }
+}
+
 async function readJson(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type')
 
@@ -37,6 +92,38 @@ async function readJson(response: Response): Promise<unknown> {
   }
 
   return response.json()
+}
+
+async function requestJson<TResponse>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<TResponse> {
+  let response: Response
+
+  try {
+    response = await fetch(booksUrl(path), {
+      method: 'GET',
+      credentials: 'include',
+      signal: options.signal,
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error
+    }
+
+    throw new BooksApiError(0, 'Unable to reach Sophia. Check your connection and try again.')
+  }
+
+  const data = await readJson(response)
+
+  if (!response.ok) {
+    throw new BooksApiError(
+      response.status,
+      readErrorMessage(data) ?? 'The request could not be completed.',
+    )
+  }
+
+  return data as TResponse
 }
 
 function toFriendlyUploadError(status: number, fallback?: string): string {
@@ -57,6 +144,12 @@ function toFriendlyUploadError(status: number, fallback?: string): string {
   }
 
   return fallback ?? 'The book could not be added to your library.'
+}
+
+export async function listBooks(options: RequestOptions = {}): Promise<ListBooksResponse> {
+  const response = await requestJson<unknown>('/books', options)
+
+  return normalizeListBooksResponse(response)
 }
 
 export async function uploadBook(payload: UploadBookPayload): Promise<UploadBookResponse> {

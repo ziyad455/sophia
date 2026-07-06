@@ -248,6 +248,7 @@ model Book {
   language         String               @default("en") @db.VarChar(16)
   sourceType       BookSourceType       @default(UPLOAD) @map("source_type")
   filePath         String               @map("file_path") @db.Text
+  coverPath        String?              @map("cover_path") @db.Text
   fileHash         String               @map("file_hash") @db.VarChar(128)
   mimeType         String               @default("application/pdf") @map("mime_type") @db.VarChar(120)
   pageCount        Int?                 @map("page_count")

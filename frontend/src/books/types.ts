@@ -1,4 +1,5 @@
-export type UploadedLibraryBook = {
+export type LibraryBook = {
+  id?: string
   userBookId: string
   bookId: string
   title: string
@@ -9,7 +10,10 @@ export type UploadedLibraryBook = {
   pageCount: number | null
   addedAt: string
   lastOpenedAt: string | null
+  coverUrl: string | null
 }
+
+export type UploadedLibraryBook = LibraryBook
 
 export type UploadBookPayload = {
   file: File
@@ -20,4 +24,8 @@ export type UploadBookPayload = {
 
 export type UploadBookResponse = {
   book: UploadedLibraryBook
+}
+
+export type ListBooksResponse = {
+  books: LibraryBook[]
 }

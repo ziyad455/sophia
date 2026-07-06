@@ -1,5 +1,5 @@
 export type LibraryBook = {
-  id: string;
+  userBookId: string;
   bookId: string;
   title: string;
   author: string | null;
@@ -9,8 +9,7 @@ export type LibraryBook = {
   pageCount: number | null;
   addedAt: string;
   lastOpenedAt: string | null;
+  coverUrl: string | null;
 };
 
-export type UploadedLibraryBook = Omit<LibraryBook, "id"> & {
-  userBookId: string;
-};
+export type UploadedLibraryBook = LibraryBook;
