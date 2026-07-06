@@ -1,12 +1,15 @@
+import { useEffect } from 'react'
 import { GuestRoute } from './routing/GuestRoute'
 import { ProtectedRoute } from './routing/ProtectedRoute'
 import { useRouteLocation } from './routing/navigation'
+import { applyStoredTheme } from './theme'
 import { LibraryPage } from './pages/LibraryPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PrivatePlaceholderPage } from './pages/PrivatePlaceholderPage'
 import { PublicHomePage } from './pages/PublicHomePage'
 import { RegisterPage } from './pages/RegisterPage'
+import { UploadPage } from './pages/UploadPage'
 
 type PrivatePlaceholderRoute = {
   eyebrow: string
@@ -15,11 +18,6 @@ type PrivatePlaceholderRoute = {
 }
 
 const protectedPlaceholderRoutes: Record<string, PrivatePlaceholderRoute> = {
-  '/upload': {
-    eyebrow: 'Library',
-    title: 'Upload',
-    description: 'Book upload will live here when the reading library is connected.',
-  },
   '/settings': {
     eyebrow: 'Account',
     title: 'Settings',
@@ -46,6 +44,10 @@ function App() {
   const location = useRouteLocation()
   const pathname = normalizePathname(location.pathname)
 
+  useEffect(() => {
+    applyStoredTheme()
+  }, [])
+
   if (pathname === '/') {
     return <PublicHomePage />
   }
@@ -70,6 +72,14 @@ function App() {
     return (
       <ProtectedRoute>
         <LibraryPage />
+      </ProtectedRoute>
+    )
+  }
+
+  if (pathname === '/upload') {
+    return (
+      <ProtectedRoute>
+        <UploadPage />
       </ProtectedRoute>
     )
   }
