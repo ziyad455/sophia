@@ -1,2 +1,8 @@
-export { BooksApiError, uploadBook } from './api'
-export type { UploadBookPayload, UploadBookResponse, UploadedLibraryBook } from './types'
+export { BooksApiError, listBooks, uploadBook } from './api'
+export type {
+  LibraryBook,
+  ListBooksResponse,
+  UploadBookPayload,
+  UploadBookResponse,
+  UploadedLibraryBook,
+} from './types'

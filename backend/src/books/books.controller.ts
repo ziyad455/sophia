@@ -1,7 +1,12 @@
 import { requireAuthContext } from "../auth/ownership";
 import { config } from "../config";
 import type { ApiRequest, ApiResponse } from "../http/types";
-import { listUserLibrary, getUserLibraryBook, uploadPdfBook } from "./books.service";
+import {
+  getUserLibraryBook,
+  getUserLibraryBookCover,
+  listUserLibrary,
+  uploadPdfBook,
+} from "./books.service";
 import { parsePdfUpload } from "./upload";
 
 export async function listLibrary(req: ApiRequest, res: ApiResponse): Promise<void> {
@@ -17,6 +22,16 @@ export async function getLibraryBook(req: ApiRequest, res: ApiResponse): Promise
   const book = await getUserLibraryBook(userId, userBookId);
 
   res.status(200).json({ book });
+}
+
+export async function getLibraryBookCover(req: ApiRequest, res: ApiResponse): Promise<void> {
+  const { userId } = requireAuthContext(req);
+  const userBookId = req.params?.userBookId ?? "";
+  const cover = await getUserLibraryBookCover(userId, userBookId);
+
+  res.setHeader("Cache-Control", "private, max-age=86400");
+  res.setHeader("Content-Type", cover.contentType);
+  res.end(cover.buffer);
 }
 
 export async function uploadBook(req: ApiRequest, res: ApiResponse): Promise<void> {
