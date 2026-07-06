@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { config } from "./config";
 import { checkDatabaseHealth } from "./db";
 import { createAuthRouter } from "./auth/auth.routes";
+import { createBooksRouter } from "./books/books.routes";
 import { HttpError } from "./http/errors";
 
 const express = require("express");
@@ -47,6 +48,7 @@ export function createApp() {
 
   app.use(express.json());
   app.use("/auth", createAuthRouter());
+  app.use("/books", createBooksRouter());
 
   app.get("/health", (_req: Request, res: Response) => {
     res.json({

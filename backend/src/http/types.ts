@@ -4,6 +4,7 @@ export type ApiRequest<TBody = unknown> = IncomingMessage & {
   body?: TBody;
   headers: IncomingHttpHeaders;
   ip?: string;
+  params?: Record<string, string | undefined>;
   auth?: AuthContext;
 };
 
