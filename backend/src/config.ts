@@ -1,7 +1,10 @@
+import path from "node:path";
+
 const DEFAULT_PORT = 3000;
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_REFRESH_TOKEN_TTL_DAYS = 30;
 const DEFAULT_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
+const DEFAULT_MAX_PDF_UPLOAD_MB = 50;
 
 type CookieSameSite = "lax" | "strict" | "none";
 
@@ -92,6 +95,12 @@ function readFrontendOrigins(): string[] {
 
 const nodeEnv = process.env.NODE_ENV ?? "development";
 const frontendOrigins = readFrontendOrigins();
+const maxPdfUploadMb = readInteger(
+  process.env.MAX_PDF_UPLOAD_MB,
+  DEFAULT_MAX_PDF_UPLOAD_MB,
+  "MAX_PDF_UPLOAD_MB",
+);
+const backendRoot = path.resolve(__dirname, "..", "..");
 
 export const config = {
   nodeEnv,
@@ -100,6 +109,11 @@ export const config = {
   frontendOrigin: frontendOrigins[0],
   frontendOrigins,
   databaseUrl: process.env.DATABASE_URL,
+  upload: {
+    uploadDir: path.resolve(backendRoot, process.env.UPLOAD_DIR ?? "storage/uploads"),
+    maxPdfUploadMb,
+    maxPdfUploadBytes: maxPdfUploadMb * 1024 * 1024,
+  },
   auth: {
     jwtAccessSecret: readJwtSecret(nodeEnv),
     jwtIssuer: process.env.JWT_ISSUER ?? "sophia-api",
