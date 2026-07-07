@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { BookProcessingStatus, PageExtractionStatus } from "@prisma/client";
+import {
+  BookProcessingStatus,
+  ChapterDetectedMethod,
+  PageExtractionStatus,
+} from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db/prisma";
 import { badRequest, conflict, HttpError, notFound } from "../http/errors";
+import { detectChaptersFromPages, type DetectedChapter } from "./chapter-detector";
 import { extractTextFromPdf, type ExtractedPdfText } from "./pdf-text";
 import {
   canMoveToStatus,
@@ -14,6 +19,7 @@ import {
 } from "./processing.status";
 import type {
   OwnedProcessingBook,
+  ChapterDetectionResult,
   ProcessingStatusBook,
   StartProcessingResult,
 } from "./processing.types";
@@ -23,6 +29,8 @@ const defaultPublicProcessingError = "This PDF could not be processed.";
 const unsupportedTextPdfMessage =
   "This PDF does not contain selectable text. OCR support will be added later.";
 const missingPdfFileMessage = "The uploaded PDF file could not be found.";
+const missingExtractedPagesMessage = "Extract PDF text before detecting chapters.";
+const chapterDetectionErrorMessage = "Sophia could not detect chapters for this book.";
 const maxPublicProcessingErrorLength = 300;
 const minTotalTextCharacters = 20;
 const minAverageTextCharactersPerPage = 5;
@@ -95,6 +103,16 @@ function serializeProcessingBook(userBook: OwnedProcessingBook): ProcessingStatu
     processingStatus: serializeProcessingStatus(userBook.book.processingStatus),
     processingError: userBook.book.processingError,
     pageCount: userBook.book.pageCount,
+  };
+}
+
+function serializeChapterDetectionResult(
+  userBook: OwnedProcessingBook,
+  chapterCount: number,
+): ChapterDetectionResult["book"] {
+  return {
+    ...serializeProcessingBook(userBook),
+    chapterCount,
   };
 }
 
@@ -180,6 +198,118 @@ async function storeExtractedPages(
   });
 }
 
+async function loadExtractedPages(bookId: string): Promise<
+  {
+    id: string;
+    pageNumber: number;
+    text: string | null;
+  }[]
+> {
+  return prisma.page.findMany({
+    where: {
+      bookId,
+      extractionStatus: PageExtractionStatus.EXTRACTED,
+    },
+    orderBy: {
+      pageNumber: "asc",
+    },
+    select: {
+      id: true,
+      pageNumber: true,
+      text: true,
+    },
+  });
+}
+
+async function replaceHeuristicChapters(
+  bookId: string,
+  chapters: DetectedChapter[],
+): Promise<number> {
+  return prisma.$transaction(async (transaction) => {
+    const existingHeuristicChapters = await transaction.chapter.findMany({
+      where: {
+        bookId,
+        detectedMethod: ChapterDetectedMethod.HEURISTIC,
+      },
+      select: {
+        id: true,
+      },
+    });
+    const existingHeuristicChapterIds = existingHeuristicChapters.map((chapter) => chapter.id);
+
+    if (existingHeuristicChapterIds.length > 0) {
+      await transaction.page.updateMany({
+        where: {
+          bookId,
+          chapterId: {
+            in: existingHeuristicChapterIds,
+          },
+        },
+        data: {
+          chapterId: null,
+        },
+      });
+
+      await transaction.chapter.deleteMany({
+        where: {
+          id: {
+            in: existingHeuristicChapterIds,
+          },
+        },
+      });
+    }
+
+    if (chapters.length === 0) {
+      return 0;
+    }
+
+    const createdChapters = [];
+
+    for (const chapter of chapters) {
+      const createdChapter = await transaction.chapter.create({
+        data: {
+          bookId,
+          title: chapter.title,
+          chapterIndex: chapter.chapterIndex,
+          pageStart: chapter.pageStart,
+          pageEnd: chapter.pageEnd,
+          startOffset: chapter.startOffset,
+          endOffset: chapter.endOffset,
+          detectedMethod: ChapterDetectedMethod.HEURISTIC,
+        },
+        select: {
+          id: true,
+          pageStart: true,
+          pageEnd: true,
+        },
+      });
+
+      createdChapters.push(createdChapter);
+    }
+
+    for (const chapter of createdChapters) {
+      if (!chapter.pageStart || !chapter.pageEnd) {
+        continue;
+      }
+
+      await transaction.page.updateMany({
+        where: {
+          bookId,
+          pageNumber: {
+            gte: chapter.pageStart,
+            lte: chapter.pageEnd,
+          },
+        },
+        data: {
+          chapterId: chapter.id,
+        },
+      });
+    }
+
+    return createdChapters.length;
+  });
+}
+
 export async function getBookProcessingStatus(
   userId: string,
   userBookId: string,
@@ -231,6 +361,77 @@ export async function markProcessingFailed(
   });
 
   return result.count === 1;
+}
+
+export async function detectChaptersForBook(
+  userId: string,
+  userBookId: string,
+): Promise<ChapterDetectionResult> {
+  const userBook = await findOwnedProcessingBook(userId, userBookId);
+
+  if (userBook.book.processingStatus === BookProcessingStatus.EXTRACTING_TEXT) {
+    throw conflict("This book is already being processed.");
+  }
+
+  if (userBook.book.processingStatus === BookProcessingStatus.READY) {
+    throw conflict("This book is already ready to read.");
+  }
+
+  if (userBook.book.processingStatus !== BookProcessingStatus.CHUNKING) {
+    throw badRequest(missingExtractedPagesMessage);
+  }
+
+  const pages = await loadExtractedPages(userBook.book.id);
+
+  if (pages.length === 0) {
+    throw badRequest(missingExtractedPagesMessage);
+  }
+
+  try {
+    const detectedChapters = detectChaptersFromPages(pages);
+    const chapterCount = await replaceHeuristicChapters(userBook.book.id, detectedChapters);
+
+    await prisma.book.update({
+      where: {
+        id: userBook.book.id,
+      },
+      data: {
+        processingError: null,
+      },
+    });
+
+    const responseBook = serializeChapterDetectionResult(
+      {
+        ...userBook,
+        book: {
+          ...userBook.book,
+          processingError: null,
+        },
+      },
+      chapterCount,
+    );
+
+    return {
+      book: responseBook,
+      message:
+        chapterCount > 0
+          ? "Chapter detection completed."
+          : "No chapter headings were detected.",
+    };
+  } catch (error) {
+    await markProcessingFailed(
+      userBook.book.id,
+      BookProcessingStatus.CHUNKING,
+      chapterDetectionErrorMessage,
+    ).catch(() => undefined);
+
+    if (error instanceof HttpError) {
+      throw error;
+    }
+
+    console.warn(`Failed to detect chapters for book ${userBook.book.id}.`, error);
+    throw badRequest(chapterDetectionErrorMessage);
+  }
 }
 
 export async function startBookProcessing(
