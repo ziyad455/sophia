@@ -27,6 +27,13 @@ export type ParsedPdfUpload = {
 };
 
 const pdfMagicBytes = Buffer.from("%PDF-");
+const maxMultipartParts = 4;
+const maxFilenameLength = 255;
+const maxTitleLength = 300;
+const maxAuthorLength = 255;
+const maxLanguageLength = 16;
+const editableUploadFields = new Set(["file", "title", "author", "language"]);
+const languagePattern = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/i;
 
 function getHeaderValue(headers: ParsedPartHeaders, name: keyof ParsedPartHeaders): string {
   return headers[name] ?? "";
@@ -163,13 +170,21 @@ function readDispositionParameter(disposition: string, parameterName: string): s
   return match?.[1];
 }
 
-function normalizeTextField(value: Buffer): string | undefined {
+function normalizeTextField(value: Buffer, fieldName: string, maxLength: number): string | undefined {
   const text = value.toString("utf8").trim();
+
+  if (text.length > maxLength) {
+    throw badRequest(`${fieldName} must be ${maxLength} characters or fewer.`);
+  }
 
   return text || undefined;
 }
 
 function validatePdfFile(file: UploadedPdfFile): void {
+  if (file.originalName.length > maxFilenameLength) {
+    throw badRequest("Uploaded filename is too long.");
+  }
+
   if (file.mimeType.toLowerCase() !== "application/pdf") {
     throw badRequest("Only PDF uploads are supported.");
   }
@@ -183,12 +198,34 @@ function validatePdfFile(file: UploadedPdfFile): void {
   }
 }
 
+function validateUploadLanguage(language: string | undefined): string | undefined {
+  if (!language) {
+    return undefined;
+  }
+
+  const normalizedLanguage = language.toLowerCase();
+
+  if (
+    normalizedLanguage.length > maxLanguageLength ||
+    !languagePattern.test(normalizedLanguage)
+  ) {
+    throw badRequest("language must be a short language code.");
+  }
+
+  return normalizedLanguage;
+}
+
 export async function parsePdfUpload(req: ApiRequest, maxBytes: number): Promise<ParsedPdfUpload> {
   const boundary = parseContentTypeBoundary(req.headers["content-type"]);
   const body = await readRequestBody(req, maxBytes);
   const parts = parseMultipartParts(body, boundary);
   const fields: Record<string, string | undefined> = {};
+  const seenFieldNames = new Set<string>();
   let file: UploadedPdfFile | undefined;
+
+  if (parts.length > maxMultipartParts) {
+    throw badRequest("Upload contains too many fields.");
+  }
 
   for (const part of parts) {
     const disposition = getHeaderValue(part.headers, "contentDisposition");
@@ -198,7 +235,15 @@ export async function parsePdfUpload(req: ApiRequest, maxBytes: number): Promise
       continue;
     }
 
+    if (!editableUploadFields.has(name)) {
+      throw badRequest("Upload contains unsupported fields.");
+    }
+
     if (name === "file") {
+      if (file) {
+        throw badRequest("Only one PDF file can be uploaded at a time.");
+      }
+
       const originalName = readDispositionParameter(disposition, "filename");
       if (!originalName) {
         throw badRequest("Uploaded file is missing a filename.");
@@ -213,8 +258,24 @@ export async function parsePdfUpload(req: ApiRequest, maxBytes: number): Promise
       continue;
     }
 
-    if (name === "title" || name === "author" || name === "language") {
-      fields[name] = normalizeTextField(part.body);
+    if (seenFieldNames.has(name)) {
+      throw badRequest("Upload contains duplicate fields.");
+    }
+
+    seenFieldNames.add(name);
+
+    if (name === "title") {
+      fields.title = normalizeTextField(part.body, "title", maxTitleLength);
+      continue;
+    }
+
+    if (name === "author") {
+      fields.author = normalizeTextField(part.body, "author", maxAuthorLength);
+      continue;
+    }
+
+    if (name === "language") {
+      fields.language = normalizeTextField(part.body, "language", maxLanguageLength);
     }
   }
 
@@ -228,6 +289,6 @@ export async function parsePdfUpload(req: ApiRequest, maxBytes: number): Promise
     file,
     title: fields.title,
     author: fields.author,
-    language: fields.language,
+    language: validateUploadLanguage(fields.language),
   };
 }
