@@ -2,6 +2,7 @@ import { requireAuthContext } from "../auth/ownership";
 import type { ApiRequest, ApiResponse } from "../http/types";
 import {
   detectChaptersForBook,
+  generateChunksForBook,
   getBookProcessingStatus,
   startBookProcessing,
 } from "./processing.service";
@@ -26,6 +27,14 @@ export async function detectChapters(req: ApiRequest, res: ApiResponse): Promise
   const { userId } = requireAuthContext(req);
   const userBookId = req.params?.userBookId ?? "";
   const result = await detectChaptersForBook(userId, userBookId);
+
+  res.status(200).json(result);
+}
+
+export async function generateChunks(req: ApiRequest, res: ApiResponse): Promise<void> {
+  const { userId } = requireAuthContext(req);
+  const userBookId = req.params?.userBookId ?? "";
+  const result = await generateChunksForBook(userId, userBookId);
 
   res.status(200).json(result);
 }
