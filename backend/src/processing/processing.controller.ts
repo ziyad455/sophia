@@ -15,6 +15,5 @@ export async function startProcessing(req: ApiRequest, res: ApiResponse): Promis
   const userBookId = req.params?.userBookId ?? "";
   const result = await startBookProcessing(userId, userBookId);
 
-  res.status(202).json(result);
+  res.status(200).json(result);
 }
-

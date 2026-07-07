@@ -2,9 +2,9 @@
 
 ## Scope
 
-S4-T1 creates the backend processing foundation for uploaded books. It prepares protected routes, ownership checks, status transitions, retry behavior, and a safe entrypoint for later PDF processing work.
+S4-T1 created the backend processing foundation for uploaded books. S4-T2 connects that foundation to embedded PDF text extraction for normal selectable-text PDFs.
 
-This task intentionally does not extract PDF text, create pages, detect chapters, generate chunks, build reader UI, or call AI providers.
+Sprint 4 processing intentionally does not perform OCR, detect chapters in S4-T2, generate chunks in S4-T2, build reader UI, or call AI providers.
 
 ## Routes
 
@@ -18,8 +18,12 @@ Processing routes are mounted under the existing `/books` route group.
 - `POST /books/:userBookId/process`
   - Requires authentication.
   - Verifies that `userBookId` belongs to `req.auth.userId`.
-  - Starts the processing pipeline by moving an uploaded or failed book to `extracting_text`.
+  - Moves an uploaded or failed book to `extracting_text`.
+  - Extracts embedded text page by page from the stored PDF.
+  - Stores one `pages` row per PDF page.
+  - Moves the book to `chunking` after successful extraction.
   - Returns `409` when the book is already processing or already ready.
+  - Returns `400` for PDFs without selectable text.
 
 Example status response:
 
@@ -84,7 +88,36 @@ Unsupported transitions are rejected. In particular, `ready -> extracting_text` 
 - `extracting_text` and `chunking` books are considered already processing and return `409`.
 - `ready` books return `409` until a future forced reprocess mode exists.
 
-The start operation uses an atomic status update so repeated requests do not duplicate pages, chapters, or chunks.
+The start operation uses an atomic status update and page upserts so repeated requests do not duplicate pages, chapters, or chunks.
+
+## Text Extraction
+
+S4-T2 uses `pdfjs-dist` to extract embedded text from the stored PDF.
+
+For each page, Sophia stores:
+
+- `book_id`
+- `chapter_id = null`
+- `page_number`
+- `text`
+- `text_hash`
+- `extraction_status`
+
+Page numbers start at `1`. Page rows are upserted by the existing unique key on `book_id + page_number`, so retries update existing rows instead of creating duplicates.
+
+After extraction succeeds:
+
+- `books.page_count` is updated.
+- `books.processing_status` moves from `extracting_text` to `chunking`.
+- `books.processing_error` is cleared.
+
+If the PDF has no selectable embedded text, Sophia marks the book `failed` and stores this public-safe message:
+
+```text
+This PDF does not contain selectable text. OCR support will be added later.
+```
+
+OCR is intentionally not implemented.
 
 ## Error Storage
 
@@ -116,7 +149,7 @@ S4-T1 adds:
 - retry-safe status updates
 - clean failure helper
 
-S4-T2 should add:
+S4-T2 adds:
 
 - actual PDF text extraction
 - page creation in `pages`
@@ -146,13 +179,18 @@ Sprint 5 should evaluate Extend UI for the reader surface, PDF viewer, thumbnail
 5. Confirm the response includes `userBookId`, `bookId`, `processingStatus`, `processingError`, and `pageCount`.
 6. Confirm the response does not include `filePath`, `coverPath`, or storage paths.
 7. Call `POST /books/:userBookId/process`.
-8. Confirm the response is `202` and `processingStatus` is `extracting_text`.
-9. Call `POST /books/:userBookId/process` again.
-10. Confirm the response is `409`.
-11. Log in as user B.
-12. Try `GET /books/:userBookId/processing-status` for user A's book.
-13. Confirm the response is `404`.
-14. Try `POST /books/:userBookId/process` for user A's book.
-15. Confirm the response is `404`.
-16. Run backend TypeScript and build checks.
-
+8. Confirm the response is `200` and `processingStatus` is `chunking`.
+9. Confirm `pages` rows exist for the book.
+10. Confirm `page_number` starts at `1`.
+11. Confirm page rows include `text`, `text_hash`, and `extraction_status`.
+12. Confirm `books.page_count` matches the PDF page count.
+13. Call `POST /books/:userBookId/process` again.
+14. Confirm the response is `409`.
+15. Log in as user B.
+16. Try `GET /books/:userBookId/processing-status` for user A's book.
+17. Confirm the response is `404`.
+18. Try `POST /books/:userBookId/process` for user A's book.
+19. Confirm the response is `404`.
+20. Upload a scanned/image-only PDF if available.
+21. Confirm processing fails with the OCR-not-supported message.
+22. Run backend TypeScript and build checks.
