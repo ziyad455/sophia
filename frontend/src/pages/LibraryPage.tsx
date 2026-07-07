@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
-import { listBooks, type LibraryBook } from '../books'
+import { listBooks, updateBookMetadata, type LibraryBook } from '../books'
 import { config } from '../config'
 import { navigate } from '../routing/navigation'
 import { applyTheme, readStoredTheme, themes, type ThemeId } from '../theme'
@@ -123,7 +123,7 @@ function BookCover({ book }: { book: LibraryBook }) {
   )
 }
 
-function BookCard({ book }: { book: LibraryBook }) {
+function BookCard({ book, onEdit }: { book: LibraryBook; onEdit: (book: LibraryBook) => void }) {
   return (
     <article className="grid min-w-0 gap-4">
       <BookCover book={book} />
@@ -142,15 +142,164 @@ function BookCard({ book }: { book: LibraryBook }) {
           <span>Added {formatDate(book.addedAt)}</span>
         </div>
 
-        <button
-          className="mt-1 min-h-10 rounded-lg border border-sophia-border px-3 text-sm font-semibold text-sophia-text disabled:cursor-not-allowed disabled:opacity-55"
-          type="button"
-          disabled
-        >
-          Open
-        </button>
+        <div className="mt-1 grid grid-cols-2 gap-2">
+          <button
+            className="min-h-10 rounded-lg border border-sophia-border px-3 text-sm font-semibold text-sophia-text disabled:cursor-not-allowed disabled:opacity-55"
+            type="button"
+            disabled
+          >
+            Open
+          </button>
+          <button
+            className="min-h-10 rounded-lg border border-sophia-border px-3 text-sm font-semibold text-sophia-text hover:border-sophia-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
+            type="button"
+            onClick={() => onEdit(book)}
+          >
+            Edit details
+          </button>
+        </div>
       </div>
     </article>
+  )
+}
+
+function MetadataEditDialog({
+  book,
+  onCancel,
+  onSaved,
+}: {
+  book: LibraryBook
+  onCancel: () => void
+  onSaved: (book: LibraryBook) => void
+}) {
+  const [title, setTitle] = useState(book.title)
+  const [author, setAuthor] = useState(book.author ?? '')
+  const [language, setLanguage] = useState(book.language || 'en')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const nextTitle = title.trim()
+    const nextAuthor = author.trim()
+    const nextLanguage = language.trim().toLowerCase()
+
+    if (!nextTitle || !nextLanguage) {
+      setError('Please check the book details.')
+      return
+    }
+
+    setSaving(true)
+    setError(null)
+
+    try {
+      const response = await updateBookMetadata(book.userBookId, {
+        title: nextTitle,
+        author: nextAuthor || null,
+        language: nextLanguage,
+      })
+
+      onSaved(response.book)
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'We could not update this book right now.',
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/55 px-5 py-8"
+      role="presentation"
+    >
+      <section
+        className="grid w-full max-w-[520px] gap-6 rounded-2xl border border-sophia-border bg-sophia-surface p-5 text-sophia-text shadow-[0_24px_70px_rgb(0_0_0_/_28%)] sm:p-7"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-book-title"
+      >
+        <header className="grid gap-2">
+          <p className="printed-gold m-0 text-xs leading-none font-bold tracking-[0.08em] uppercase">
+            Book details
+          </p>
+          <h2
+            id="edit-book-title"
+            className="m-0 text-2xl leading-tight font-semibold tracking-normal text-sophia-text"
+          >
+            Edit metadata
+          </h2>
+        </header>
+
+        <form className="grid gap-4" onSubmit={handleSubmit}>
+          <label className="grid gap-2 text-sm font-semibold text-sophia-text">
+            Title
+            <input
+              className="min-h-11 rounded-lg border border-sophia-border bg-sophia-bg px-3 text-base font-normal text-sophia-text outline-none focus:border-sophia-primary"
+              maxLength={300}
+              type="text"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              required
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm font-semibold text-sophia-text">
+            Author
+            <input
+              className="min-h-11 rounded-lg border border-sophia-border bg-sophia-bg px-3 text-base font-normal text-sophia-text outline-none focus:border-sophia-primary"
+              maxLength={255}
+              type="text"
+              value={author}
+              onChange={(event) => setAuthor(event.target.value)}
+              placeholder="Unknown author"
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm font-semibold text-sophia-text">
+            Language
+            <select
+              className="min-h-11 rounded-lg border border-sophia-border bg-sophia-bg px-3 text-base font-normal text-sophia-text outline-none focus:border-sophia-primary"
+              value={language}
+              onChange={(event) => setLanguage(event.target.value)}
+            >
+              <option value="en">English</option>
+              <option value="fr">French</option>
+              <option value="ar">Arabic</option>
+              <option value="es">Spanish</option>
+            </select>
+          </label>
+
+          {error ? (
+            <p className="m-0 rounded-lg border border-sophia-border bg-sophia-bg px-4 py-3 text-sm text-sophia-primary">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex flex-col-reverse gap-3 border-t border-sophia-border pt-5 sm:flex-row sm:justify-end">
+            <button
+              className="min-h-11 rounded-lg border border-sophia-border px-5 text-sm font-semibold text-sophia-text disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              disabled={saving}
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+            <button
+              className="min-h-11 rounded-lg bg-sophia-primary px-5 text-sm font-bold text-sophia-bg disabled:cursor-not-allowed disabled:opacity-60"
+              type="submit"
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : 'Save details'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   )
 }
 
@@ -160,6 +309,7 @@ export function LibraryPage() {
   const [books, setBooks] = useState<LibraryBook[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [editingBook, setEditingBook] = useState<LibraryBook | null>(null)
 
   async function loadLibrary(signal?: AbortSignal) {
     setLoading(true)
@@ -200,6 +350,15 @@ export function LibraryPage() {
 
   function goToUpload() {
     navigate('/upload')
+  }
+
+  function handleBookSaved(updatedBook: LibraryBook) {
+    setBooks((currentBooks) =>
+      currentBooks.map((book) =>
+        book.userBookId === updatedBook.userBookId ? updatedBook : book,
+      ),
+    )
+    setEditingBook(null)
   }
 
   return (
@@ -339,12 +498,20 @@ export function LibraryPage() {
           {!loading && !error && books.length > 0 ? (
             <div className="grid grid-cols-1 gap-x-7 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {books.map((book) => (
-                <BookCard key={book.userBookId} book={book} />
+                <BookCard key={book.userBookId} book={book} onEdit={setEditingBook} />
               ))}
             </div>
           ) : null}
         </div>
       </section>
+
+      {editingBook ? (
+        <MetadataEditDialog
+          book={editingBook}
+          onCancel={() => setEditingBook(null)}
+          onSaved={handleBookSaved}
+        />
+      ) : null}
     </main>
   )
 }

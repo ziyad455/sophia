@@ -1,6 +1,12 @@
 import { requireAuth } from "../auth/auth.middleware";
 import { asyncHandler } from "../http/errors";
-import { getLibraryBook, getLibraryBookCover, listLibrary, uploadBook } from "./books.controller";
+import {
+  getLibraryBook,
+  getLibraryBookCover,
+  listLibrary,
+  updateLibraryBookMetadata,
+  uploadBook,
+} from "./books.controller";
 
 const express = require("express");
 
@@ -10,6 +16,7 @@ export function createBooksRouter() {
   router.get("/", requireAuth, asyncHandler(listLibrary));
   router.post("/upload", requireAuth, asyncHandler(uploadBook));
   router.get("/:userBookId/cover", requireAuth, asyncHandler(getLibraryBookCover));
+  router.patch("/:userBookId/metadata", requireAuth, asyncHandler(updateLibraryBookMetadata));
   router.get("/:userBookId", requireAuth, asyncHandler(getLibraryBook));
 
   return router;

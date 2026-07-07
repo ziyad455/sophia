@@ -5,6 +5,7 @@ import { BookProcessingStatus, BookSourceType, UserBookStatus } from "@prisma/cl
 import { config } from "../config";
 import { prisma } from "../db/prisma";
 import { conflict, notFound } from "../http/errors";
+import type { UpdateBookMetadataDto } from "./books.dto";
 import type { LibraryBook, UploadedLibraryBook } from "./books.types";
 import { generatePdfCoverThumbnail } from "./covers";
 import type { UploadedPdfFile } from "./upload";
@@ -203,6 +204,66 @@ export async function getUserLibraryBook(userId: string, userBookId: string): Pr
   const [bookWithCover] = await withMissingCoversGenerated([userBook]);
 
   return serializeLibraryBook(bookWithCover);
+}
+
+export async function updateUserLibraryBookMetadata(
+  userId: string,
+  userBookId: string,
+  dto: UpdateBookMetadataDto,
+): Promise<LibraryBook> {
+  if (!uuidPattern.test(userBookId)) {
+    throw notFound("Library entry not found.");
+  }
+
+  const userBook = await prisma.userBook.findFirst({
+    where: {
+      id: userBookId,
+      userId,
+    },
+    select: {
+      bookId: true,
+    },
+  });
+
+  if (!userBook) {
+    throw notFound("Library entry not found.");
+  }
+
+  const updatedUserBook = await prisma.$transaction(async (transaction) => {
+    await transaction.book.update({
+      where: {
+        id: userBook.bookId,
+      },
+      data: dto,
+    });
+
+    return transaction.userBook.findFirst({
+      where: {
+        id: userBookId,
+        userId,
+      },
+      include: {
+        book: {
+          select: {
+            id: true,
+            title: true,
+            author: true,
+            language: true,
+            filePath: true,
+            processingStatus: true,
+            pageCount: true,
+            coverPath: true,
+          },
+        },
+      },
+    });
+  });
+
+  if (!updatedUserBook) {
+    throw notFound("Library entry not found.");
+  }
+
+  return serializeLibraryBook(updatedUserBook);
 }
 
 export async function uploadPdfBook(input: UploadPdfBookInput): Promise<UploadedLibraryBook> {
