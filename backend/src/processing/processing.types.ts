@@ -23,3 +23,12 @@ export type StartProcessingResult = {
   book: ProcessingStatusBook;
   message: string;
 };
+
+export type ChapterDetectionBook = ProcessingStatusBook & {
+  chapterCount: number;
+};
+
+export type ChapterDetectionResult = {
+  book: ChapterDetectionBook;
+  message: string;
+};

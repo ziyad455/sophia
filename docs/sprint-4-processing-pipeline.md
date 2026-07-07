@@ -2,9 +2,9 @@
 
 ## Scope
 
-S4-T1 created the backend processing foundation for uploaded books. S4-T2 connects that foundation to embedded PDF text extraction for normal selectable-text PDFs.
+S4-T1 created the backend processing foundation for uploaded books. S4-T2 connects that foundation to embedded PDF text extraction for normal selectable-text PDFs. S4-T3 adds conservative heuristic chapter detection from extracted page text.
 
-Sprint 4 processing intentionally does not perform OCR, detect chapters in S4-T2, generate chunks in S4-T2, build reader UI, or call AI providers.
+Sprint 4 processing intentionally does not perform OCR, generate chunks before S4-T4, build reader UI, or call AI providers.
 
 ## Routes
 
@@ -24,6 +24,16 @@ Processing routes are mounted under the existing `/books` route group.
   - Moves the book to `chunking` after successful extraction.
   - Returns `409` when the book is already processing or already ready.
   - Returns `400` for PDFs without selectable text.
+
+- `POST /books/:userBookId/chapters/detect`
+  - Requires authentication.
+  - Verifies that `userBookId` belongs to `req.auth.userId`.
+  - Loads extracted pages in reading order.
+  - Detects likely chapter headings with conservative heuristics.
+  - Replaces existing heuristic chapters for the book.
+  - Links pages to detected chapter ranges.
+  - Keeps `processingStatus` as `chunking`.
+  - Returns `chapterCount`, including `0` when no headings are detected.
 
 Example status response:
 
@@ -119,6 +129,50 @@ This PDF does not contain selectable text. OCR support will be added later.
 
 OCR is intentionally not implemented.
 
+## Chapter Detection
+
+S4-T3 uses a heuristic detector over already-extracted `pages.text`.
+
+Supported heading patterns include:
+
+- `Chapter 1`
+- `CHAPTER I`
+- `Chapter One`
+- `Part I`
+- `Book I`
+- `I.`
+- `1.`
+- `Introduction`
+- `Preface`
+- `Conclusion`
+- `Epilogue`
+
+The detector:
+
+- scans pages in `page_number` order
+- inspects the first 30 non-empty lines of each page
+- prefers short standalone heading lines
+- scores explicit chapter/part/book headings higher than generic title-like lines
+- skips repeated short lines that look like headers or footers
+- treats false negatives as acceptable
+
+If no chapter headings are found, Sophia returns success with `chapterCount = 0`. This is not a processing failure; S4-T4 can still generate page-based chunks.
+
+For detected chapters, Sophia stores:
+
+- `book_id`
+- `title`
+- `chapter_index`
+- `page_start`
+- `page_end`
+- `start_offset` when available
+- `end_offset = null`
+- `detected_method = heuristic`
+
+Pages are linked by updating `pages.chapter_id` for page ranges between detected chapter starts. Pages before the first detected chapter remain unlinked.
+
+Chapter detection is retry-safe. Before regenerating heuristic chapters, Sophia clears `pages.chapter_id` for existing heuristic chapters and deletes only those heuristic chapter rows. It does not delete pages or chunks.
+
 ## Error Storage
 
 Processing failures should use `markProcessingFailed(bookId, currentStatus, errorMessage)`.
@@ -155,7 +209,7 @@ S4-T2 adds:
 - page creation in `pages`
 - page count updates
 
-S4-T3 should add:
+S4-T3 adds:
 
 - chapter detection
 - `chapters` rows
@@ -186,11 +240,20 @@ Sprint 5 should evaluate Extend UI for the reader surface, PDF viewer, thumbnail
 12. Confirm `books.page_count` matches the PDF page count.
 13. Call `POST /books/:userBookId/process` again.
 14. Confirm the response is `409`.
-15. Log in as user B.
-16. Try `GET /books/:userBookId/processing-status` for user A's book.
-17. Confirm the response is `404`.
-18. Try `POST /books/:userBookId/process` for user A's book.
-19. Confirm the response is `404`.
-20. Upload a scanned/image-only PDF if available.
-21. Confirm processing fails with the OCR-not-supported message.
-22. Run backend TypeScript and build checks.
+15. Call `POST /books/:userBookId/chapters/detect`.
+16. Confirm the response is `200` and includes `chapterCount`.
+17. Confirm any detected `chapters` rows use `detected_method = heuristic`.
+18. Confirm `chapter_index`, `page_start`, and `page_end` follow reading order.
+19. Confirm `pages.chapter_id` is populated inside detected page ranges.
+20. Call `POST /books/:userBookId/chapters/detect` again.
+21. Confirm chapters are not duplicated.
+22. Log in as user B.
+23. Try `GET /books/:userBookId/processing-status` for user A's book.
+24. Confirm the response is `404`.
+25. Try `POST /books/:userBookId/process` for user A's book.
+26. Confirm the response is `404`.
+27. Try `POST /books/:userBookId/chapters/detect` for user A's book.
+28. Confirm the response is `404`.
+29. Upload a scanned/image-only PDF if available.
+30. Confirm processing fails with the OCR-not-supported message.
+31. Run backend TypeScript and build checks.
