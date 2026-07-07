@@ -1,0 +1,180 @@
+# Sprint 3 Best-Practices Audit
+
+## Summary
+
+Sprint 3 is closeable for the MVP after the small hardening fixes in this branch. The upload, library, cover, and metadata flows follow the core architecture Sophia needs for Sprint 4: authenticated routes, user-owned `user_books`, generated storage filenames, local PDF storage outside the frontend public assets, cover thumbnails served through a protected API, and safe response objects.
+
+The main remaining work is verification and production hardening, not a redesign. Sprint 4 can start after the team runs the manual checks below and keeps the listed must-fix items visible.
+
+## Sources Used
+
+- [OWASP File Upload Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html): use extension allowlists, do not trust `Content-Type` alone, validate file signatures, generate server filenames, set filename and file size limits, require authorization, store outside webroot, and avoid exposing raw file paths.
+- [Express Multer middleware docs](https://expressjs.com/en/resources/middleware/multer/): multipart parsing should be route-scoped, use file and field limits for DoS protection, filter accepted files carefully, and handle parser errors cleanly.
+- [Node.js path docs](https://nodejs.org/api/path.html): path helpers are stable, but absolute-path checks alone are not safe for traversal mitigation. Resolve paths against a trusted root and verify containment.
+- [PDF.js examples](https://mozilla.github.io/pdf.js/examples/): PDF.js supports loading documents, reading page 1, creating a viewport at a chosen scale, and rendering a page to a canvas. This is a good fit for first-page cover thumbnails.
+- [MDN FormData docs](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest_API/Using_FormData_Objects): send files and fields with `FormData`; when using `fetch`, do not manually set `Content-Type` for multipart because the browser must set the boundary.
+- [MDN Fetch credentials docs](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch): cookie auth requires `credentials: "include"` for cross-origin requests, explicit allowed origins, and `Access-Control-Allow-Credentials`; wildcard origins are not valid with credentials.
+- [W3C WAI image alt decision tree](https://www.w3.org/WAI/tutorials/images/decision-tree/): meaningful images need useful alt text or adjacent text; decorative/redundant images can use empty alt text.
+- [WCAG Keyboard accessibility](https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html): interactive controls should be reachable and operable from the keyboard.
+
+## Current Implementation
+
+### Backend Flow
+
+1. `POST /books/upload` is protected by `requireAuth`.
+2. The controller reads `req.auth.userId`, parses the multipart body, and calls the book service.
+3. Upload validation checks multipart content type, PDF MIME type, `.pdf` extension, PDF magic bytes, file size, filename length, supported fields, duplicate fields, single file count, and metadata length.
+4. The service generates a UUID book id, hashes the PDF with SHA-256, checks duplicate ownership by `userId + fileHash`, stores the PDF under `backend/storage/uploads/books/pdf/<bookId>.pdf`, generates a page-1 WebP cover, and creates `books` plus `user_books` rows in a transaction.
+5. If DB creation fails after the file write, the service removes written PDF and cover files.
+6. If cover generation fails, upload still succeeds and the frontend shows a fallback cover.
+7. `GET /books` returns only the current user's library entries.
+8. `GET /books/:userBookId/cover` verifies ownership with `userBook.id + userId` before reading the cover file.
+9. `PATCH /books/:userBookId/metadata` verifies ownership before updating `title`, `author`, and `language`.
+
+### Frontend Flow
+
+1. `/upload` is protected by `ProtectedRoute`.
+2. The upload page validates PDF type and size before sending.
+3. Upload requests use `FormData`, include cookies with `credentials: "include"`, and do not manually set the multipart boundary.
+4. `/library` is protected by `ProtectedRoute`.
+5. The library page fetches `GET /books` with credentials, renders loading, empty, error, and bookshelf states, and fetches covers as credentialed blobs.
+6. Broken or missing cover images render a calm fallback book cover instead of a broken image.
+7. Metadata editing uses the protected metadata route and updates local state after a successful save.
+
+## What Is Already Good
+
+- All book routes are protected with `requireAuth`.
+- Services use `req.auth.userId` instead of trusting a `userId` from request body or route params.
+- Ownership checks use `user_books.id` scoped by `userId`, which prevents access to another user's library item.
+- Book and cover response objects do not expose `file_path`, `cover_path`, or backend storage paths.
+- Storage is under `backend/storage/uploads`, outside frontend assets, and `backend/storage/` is gitignored.
+- PDF filenames and cover filenames are generated by the backend with UUIDs.
+- Upload duplicate detection uses SHA-256 file hashes scoped to the current user.
+- Upload validation uses defense in depth: extension, MIME type, magic bytes, size limit, generated filename, and auth.
+- Cover generation uses PDF.js to render page 1 and stores generated covers separately from PDFs.
+- Cover generation failure does not break upload.
+- Frontend upload uses browser-managed `FormData`.
+- Frontend requests include credentials and do not store tokens in `localStorage`.
+- Frontend states cover loading, empty library, API error, missing covers, upload success, and duplicate-upload messages.
+
+## Risks Found
+
+### Must Fix Before Sprint 4
+
+- Add deterministic backend tests or a repeatable smoke script for upload, list, cover, metadata update, ownership denial, duplicate upload, invalid PDF, and oversized upload. The code is manually tested, but Sprint 4 PDF processing will build on this surface.
+- Confirm the deployed/local database has the `books.cover_path` migration applied before testing new uploads on a fresh machine.
+- Keep backend and frontend upload limits synchronized. The backend is authoritative, but the frontend reads `VITE_MAX_PDF_UPLOAD_MB`; mismatched env values will produce confusing UX.
+
+### Should Fix Soon
+
+- The app-level 500 handler currently returns `error.message` for unexpected errors. That is useful in local development but should become a generic message in production so Prisma or filesystem details are not exposed.
+- The custom multipart parser is acceptable for the MVP after the added guardrails, but it should either gain tests around boundary parsing and limits or be replaced by a maintained parser such as Multer before higher-volume usage.
+- Cover generation is synchronous in the upload request. This is okay for MVP-sized PDFs, but a background job would make uploads more resilient for larger files or slower servers.
+- Add request rate limits or reverse-proxy body limits before public deployment. Current file size limits protect memory per request, but not request frequency.
+- Add an orphan cleanup command for files that exist without DB rows, and DB rows that reference missing files.
+- Document storage backup/restore behavior before users rely on the local library.
+
+### Nice To Have Later
+
+- Add antivirus or sandbox scanning for uploaded PDFs before public beta.
+- Store covers and PDFs behind an object-storage adapter when moving beyond local MVP storage.
+- Generate multiple cover sizes if the reader or mobile app later needs different dimensions.
+- Track upload processing events so users can see when a cover fallback is temporary.
+- Add image response caching with ETags once cover files are stable.
+
+## Recommended Adjustments
+
+### Applied In This Branch
+
+- Hardened `backend/src/books/upload.ts`:
+  - rejects uploads with too many multipart parts
+  - rejects unsupported multipart fields
+  - rejects duplicate text fields
+  - rejects multiple file parts
+  - rejects overly long original filenames
+  - validates upload metadata length
+  - normalizes and validates upload language codes
+- Updated `backend/.env.example`:
+  - uses `FRONTEND_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`
+  - aligns `ACCESS_TOKEN_TTL_SECONDS` with the current one-month local auth behavior
+
+### Recommended Next Steps
+
+- Add a backend test file or smoke script for all Sprint 3 endpoints.
+- Update `docs/api.md` with the Sprint 3 API contract.
+- Add a storage operations note covering `UPLOAD_DIR`, backups, ignored local files, and cleanup.
+- Change production 500 responses to a generic message.
+
+## Security Checklist
+
+- [x] Upload route requires authentication.
+- [x] Upload route uses `req.auth.userId`.
+- [x] Only PDF uploads are allowed.
+- [x] Extension is allowlisted to `.pdf`.
+- [x] MIME type is checked, but not trusted alone.
+- [x] PDF magic bytes are checked.
+- [x] File size limit is configurable with `MAX_PDF_UPLOAD_MB`.
+- [x] Generated backend filenames are used for stored PDFs and covers.
+- [x] Original filename length is limited.
+- [x] Multipart field count is limited.
+- [x] Multipart file count is limited to one.
+- [x] Unsupported multipart fields are rejected.
+- [x] User-controlled metadata is trimmed and length-limited.
+- [x] Stored files are outside frontend public assets.
+- [x] Raw storage paths are not returned to the frontend.
+- [x] Path reads resolve under the configured upload root.
+- [x] Failed DB writes clean up already-written files.
+- [ ] Deterministic regression tests exist.
+- [ ] Production generic 500 errors are enforced.
+- [ ] Public deployment rate limits/body limits are configured.
+- [ ] Antivirus or sandbox scanning exists for public beta.
+
+## Ownership Checklist
+
+- [x] `GET /books` uses the authenticated user's id.
+- [x] `GET /books/:userBookId` scopes lookup by `id` and `userId`.
+- [x] `GET /books/:userBookId/cover` scopes lookup by `id` and `userId`.
+- [x] `PATCH /books/:userBookId/metadata` checks ownership before updating the shared `books` row.
+- [x] Routes prefer 404 for missing or not-owned resources.
+- [x] No route accepts `userId` from request body.
+- [x] Response objects contain safe library fields only.
+- [x] Cover files are served through a protected route, not static public file serving.
+- [ ] Ownership denial tests exist for another user's `userBookId`.
+
+## Frontend UX Checklist
+
+- [x] `/upload` is protected.
+- [x] `/library` is protected.
+- [x] Upload supports click-to-browse and drag-and-drop.
+- [x] Upload validates PDF type before sending.
+- [x] Upload validates file size before sending.
+- [x] Upload uses `FormData` and lets the browser set the multipart boundary.
+- [x] Upload includes credentials for cookie auth.
+- [x] Upload has loading, success, and friendly error states.
+- [x] Upload redirects to `/library` after success.
+- [x] Library has loading, empty, error, and populated states.
+- [x] Library has fallback covers for missing images.
+- [x] Cover fetches include credentials.
+- [x] Metadata edit actions are keyboard reachable.
+- [x] Book covers use empty `alt` because title/author text is adjacent and visible.
+- [x] No auth tokens are stored in `localStorage`.
+- [ ] Add automated accessibility checks or manual keyboard pass notes.
+
+## Local Storage Checklist
+
+- [x] PDFs are stored under `backend/storage/uploads/books/pdf`.
+- [x] Covers are stored under `backend/storage/uploads/books/covers`.
+- [x] `backend/storage/` is ignored by git.
+- [x] Uploaded files survive app restart on the same machine.
+- [x] DB references use relative paths rather than absolute machine paths.
+- [x] Storage path resolution prevents reading outside `UPLOAD_DIR`.
+- [ ] Storage backup/restore is documented.
+- [ ] Orphan cleanup is documented or scripted.
+- [ ] Docker/local volume mapping is documented.
+
+## Final Recommendation
+
+Sprint 3 can be closed for MVP development after verification commands and manual endpoint checks pass on a fresh local run. There are no blockers that require redesigning the upload/library/cover architecture before Sprint 4.
+
+The only Sprint 4 entry condition I would enforce is a small regression suite or smoke script for the Sprint 3 backend routes, because text extraction and reader work will depend on trusted book ownership, file paths, and `userBookId` behavior.
+
