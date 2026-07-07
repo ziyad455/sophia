@@ -29,3 +29,13 @@ export type UploadBookResponse = {
 export type ListBooksResponse = {
   books: LibraryBook[]
 }
+
+export type UpdateBookMetadataPayload = {
+  title?: string
+  author?: string | null
+  language?: string
+}
+
+export type UpdateBookMetadataResponse = {
+  book: LibraryBook
+}

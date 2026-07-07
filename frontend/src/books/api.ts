@@ -1,7 +1,16 @@
 import { config } from '../config'
-import type { LibraryBook, ListBooksResponse, UploadBookPayload, UploadBookResponse } from './types'
+import type {
+  LibraryBook,
+  ListBooksResponse,
+  UpdateBookMetadataPayload,
+  UpdateBookMetadataResponse,
+  UploadBookPayload,
+  UploadBookResponse,
+} from './types'
 
 type RequestOptions = {
+  body?: unknown
+  method?: 'GET' | 'PATCH'
   signal?: AbortSignal
 }
 
@@ -102,8 +111,10 @@ async function requestJson<TResponse>(
 
   try {
     response = await fetch(booksUrl(path), {
-      method: 'GET',
+      method: options.method ?? 'GET',
       credentials: 'include',
+      headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
+      body: options.body ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
     })
   } catch (error) {
@@ -124,6 +135,22 @@ async function requestJson<TResponse>(
   }
 
   return data as TResponse
+}
+
+function toFriendlyMetadataError(status: number): string {
+  if (status === 400) {
+    return 'Please check the book details.'
+  }
+
+  if (status === 404) {
+    return 'We could not find this book in your library.'
+  }
+
+  if (status >= 500) {
+    return 'We could not update this book right now.'
+  }
+
+  return 'We could not update this book right now.'
 }
 
 function toFriendlyUploadError(status: number, fallback?: string): string {
@@ -150,6 +177,38 @@ export async function listBooks(options: RequestOptions = {}): Promise<ListBooks
   const response = await requestJson<unknown>('/books', options)
 
   return normalizeListBooksResponse(response)
+}
+
+export async function updateBookMetadata(
+  userBookId: string,
+  payload: UpdateBookMetadataPayload,
+): Promise<UpdateBookMetadataResponse> {
+  let response: unknown
+
+  try {
+    response = await requestJson<unknown>(`/books/${userBookId}/metadata`, {
+      method: 'PATCH',
+      body: payload,
+    })
+  } catch (error) {
+    if (error instanceof BooksApiError) {
+      throw new BooksApiError(error.status, toFriendlyMetadataError(error.status))
+    }
+
+    throw error
+  }
+
+  if (!isRecord(response)) {
+    throw new BooksApiError(0, 'We could not update this book right now.')
+  }
+
+  const book = normalizeBook(response.book, 0)
+
+  if (!book) {
+    throw new BooksApiError(0, 'We could not update this book right now.')
+  }
+
+  return { book }
 }
 
 export async function uploadBook(payload: UploadBookPayload): Promise<UploadBookResponse> {
