@@ -2,9 +2,9 @@
 
 ## Scope
 
-S4-T1 created the backend processing foundation for uploaded books. S4-T2 connects that foundation to embedded PDF text extraction for normal selectable-text PDFs. S4-T3 adds conservative heuristic chapter detection from extracted page text.
+S4-T1 created the backend processing foundation for uploaded books. S4-T2 connects that foundation to embedded PDF text extraction for normal selectable-text PDFs. S4-T3 adds conservative heuristic chapter detection from extracted page text. S4-T4 generates reusable book chunks for future reading and AI context.
 
-Sprint 4 processing intentionally does not perform OCR, generate chunks before S4-T4, build reader UI, or call AI providers.
+Sprint 4 processing intentionally does not perform OCR, build reader UI, create embeddings, implement RAG, or call AI providers.
 
 ## Routes
 
@@ -34,6 +34,17 @@ Processing routes are mounted under the existing `/books` route group.
   - Links pages to detected chapter ranges.
   - Keeps `processingStatus` as `chunking`.
   - Returns `chapterCount`, including `0` when no headings are detected.
+
+- `POST /books/:userBookId/chunks/generate`
+  - Requires authentication.
+  - Verifies that `userBookId` belongs to `req.auth.userId`.
+  - Loads extracted pages in reading order.
+  - Generates page/paragraph chunks.
+  - Preserves `pageStart` and `pageEnd`.
+  - Attaches `chapterId` when a chunk belongs to one chapter.
+  - Replaces existing chunks for the current chunking version.
+  - Moves `processingStatus` from `chunking` to `ready`.
+  - Returns `chapterCount` and `chunkCount`.
 
 Example status response:
 
@@ -173,6 +184,62 @@ Pages are linked by updating `pages.chapter_id` for page ranges between detected
 
 Chapter detection is retry-safe. Before regenerating heuristic chapters, Sophia clears `pages.chapter_id` for existing heuristic chapters and deletes only those heuristic chapter rows. It does not delete pages or chunks.
 
+## Chunk Generation
+
+S4-T4 generates chunks from extracted pages with a simple MVP strategy:
+
+- strategy: `page_paragraph_overlap`
+- chunking version: `mvp-v1-page-paragraph-overlap`
+- target chunk size: about 1000 estimated tokens
+- max chunk size: about 1200 estimated tokens
+- overlap: about 150 estimated tokens
+- estimated tokens: `words * 1.3`
+
+The chunker:
+
+- reads `pages` in `page_number` order
+- splits page text on paragraph and line boundaries
+- carries page numbers through each segment
+- closes the current chunk before a clear chapter boundary when possible
+- allows `chapter_id = null` when no chapter is available or a mixed chunk cannot be cleanly attributed
+
+For each `book_chunks` row, Sophia stores:
+
+- `book_id`
+- `chapter_id`
+- `page_start`
+- `page_end`
+- `chunk_index`
+- `content`
+- `token_count`
+- `text_hash`
+- `chunking_version`
+- `metadata`
+
+Metadata is intentionally small:
+
+```json
+{
+  "strategy": "page_paragraph_overlap",
+  "targetTokens": 1000,
+  "overlapTokens": 150,
+  "source": "pdf_text_extraction_v1"
+}
+```
+
+Chunk generation is retry-safe. Sophia deletes and regenerates only `book_chunks` rows for the current book and current chunking version. It does not delete pages or chapters.
+
+After successful chunk generation:
+
+- `books.processing_status = ready`
+- `books.processing_error = null`
+
+If no extracted page text exists, Sophia marks the book `failed` and stores:
+
+```text
+This book has no extracted text to prepare.
+```
+
 ## Error Storage
 
 Processing failures should use `markProcessingFailed(bookId, currentStatus, errorMessage)`.
@@ -215,7 +282,7 @@ S4-T3 adds:
 - `chapters` rows
 - page-to-chapter relationships where appropriate
 
-S4-T4 should add:
+S4-T4 adds:
 
 - `book_chunks`
 - chunk hashes
@@ -247,13 +314,22 @@ Sprint 5 should evaluate Extend UI for the reader surface, PDF viewer, thumbnail
 19. Confirm `pages.chapter_id` is populated inside detected page ranges.
 20. Call `POST /books/:userBookId/chapters/detect` again.
 21. Confirm chapters are not duplicated.
-22. Log in as user B.
-23. Try `GET /books/:userBookId/processing-status` for user A's book.
-24. Confirm the response is `404`.
-25. Try `POST /books/:userBookId/process` for user A's book.
-26. Confirm the response is `404`.
-27. Try `POST /books/:userBookId/chapters/detect` for user A's book.
-28. Confirm the response is `404`.
-29. Upload a scanned/image-only PDF if available.
-30. Confirm processing fails with the OCR-not-supported message.
-31. Run backend TypeScript and build checks.
+22. Call `POST /books/:userBookId/chunks/generate`.
+23. Confirm the response is `200`, `processingStatus` is `ready`, and `chunkCount` is greater than `0`.
+24. Confirm `book_chunks` rows have ordered `chunk_index` values.
+25. Confirm chunks include `content`, `page_start`, `page_end`, `token_count`, `text_hash`, `chunking_version`, and metadata.
+26. Confirm chunks use `chapter_id` when pages have a clear chapter.
+27. Call `POST /books/:userBookId/chunks/generate` again to test regeneration for the same chunking version.
+28. Confirm chunks are not duplicated.
+29. Log in as user B.
+30. Try `GET /books/:userBookId/processing-status` for user A's book.
+31. Confirm the response is `404`.
+32. Try `POST /books/:userBookId/process` for user A's book.
+33. Confirm the response is `404`.
+34. Try `POST /books/:userBookId/chapters/detect` for user A's book.
+35. Confirm the response is `404`.
+36. Try `POST /books/:userBookId/chunks/generate` for user A's book.
+37. Confirm the response is `404`.
+38. Upload a scanned/image-only PDF if available.
+39. Confirm processing fails with the OCR-not-supported message.
+40. Run backend TypeScript and build checks.

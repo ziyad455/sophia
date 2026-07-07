@@ -10,6 +10,11 @@ import { config } from "../config";
 import { prisma } from "../db/prisma";
 import { badRequest, conflict, HttpError, notFound } from "../http/errors";
 import { detectChaptersFromPages, type DetectedChapter } from "./chapter-detector";
+import {
+  chunkingVersion,
+  generateBookChunksFromPages,
+  type GeneratedBookChunk,
+} from "./chunker";
 import { extractTextFromPdf, type ExtractedPdfText } from "./pdf-text";
 import {
   canMoveToStatus,
@@ -20,6 +25,7 @@ import {
 import type {
   OwnedProcessingBook,
   ChapterDetectionResult,
+  ChunkGenerationResult,
   ProcessingStatusBook,
   StartProcessingResult,
 } from "./processing.types";
@@ -30,7 +36,9 @@ const unsupportedTextPdfMessage =
   "This PDF does not contain selectable text. OCR support will be added later.";
 const missingPdfFileMessage = "The uploaded PDF file could not be found.";
 const missingExtractedPagesMessage = "Extract PDF text before detecting chapters.";
+const missingChunkingPagesMessage = "This book has no extracted text to prepare.";
 const chapterDetectionErrorMessage = "Sophia could not detect chapters for this book.";
+const chunkGenerationErrorMessage = "This book could not be prepared for reading.";
 const maxPublicProcessingErrorLength = 300;
 const minTotalTextCharacters = 20;
 const minAverageTextCharactersPerPage = 5;
@@ -116,6 +124,17 @@ function serializeChapterDetectionResult(
   };
 }
 
+function serializeChunkGenerationResult(
+  userBook: OwnedProcessingBook,
+  chapterCount: number,
+  chunkCount: number,
+): ChunkGenerationResult["book"] {
+  return {
+    ...serializeChapterDetectionResult(userBook, chapterCount),
+    chunkCount,
+  };
+}
+
 async function findOwnedProcessingBook(
   userId: string,
   userBookId: string,
@@ -198,11 +217,20 @@ async function storeExtractedPages(
   });
 }
 
+async function countBookChapters(bookId: string): Promise<number> {
+  return prisma.chapter.count({
+    where: {
+      bookId,
+    },
+  });
+}
+
 async function loadExtractedPages(bookId: string): Promise<
   {
     id: string;
     pageNumber: number;
     text: string | null;
+    chapterId: string | null;
   }[]
 > {
   return prisma.page.findMany({
@@ -217,6 +245,7 @@ async function loadExtractedPages(bookId: string): Promise<
       id: true,
       pageNumber: true,
       text: true,
+      chapterId: true,
     },
   });
 }
@@ -310,6 +339,39 @@ async function replaceHeuristicChapters(
   });
 }
 
+async function replaceBookChunks(
+  bookId: string,
+  chunks: GeneratedBookChunk[],
+): Promise<number> {
+  return prisma.$transaction(async (transaction) => {
+    await transaction.bookChunk.deleteMany({
+      where: {
+        bookId,
+        chunkingVersion,
+      },
+    });
+
+    for (const chunk of chunks) {
+      await transaction.bookChunk.create({
+        data: {
+          bookId,
+          chapterId: chunk.chapterId,
+          pageStart: chunk.pageStart,
+          pageEnd: chunk.pageEnd,
+          chunkIndex: chunk.chunkIndex,
+          content: chunk.content,
+          tokenCount: chunk.tokenCount,
+          textHash: hashText(chunk.content),
+          chunkingVersion,
+          metadata: chunk.metadata,
+        },
+      });
+    }
+
+    return chunks.length;
+  });
+}
+
 export async function getBookProcessingStatus(
   userId: string,
   userBookId: string,
@@ -361,6 +423,27 @@ export async function markProcessingFailed(
   });
 
   return result.count === 1;
+}
+
+async function markChunkGenerationFailed(
+  bookId: string,
+  currentStatus: BookProcessingStatus,
+  errorMessage: string,
+): Promise<void> {
+  if (currentStatus === BookProcessingStatus.READY) {
+    await prisma.book.update({
+      where: {
+        id: bookId,
+      },
+      data: {
+        processingStatus: BookProcessingStatus.FAILED,
+        processingError: sanitizeProcessingErrorMessage(errorMessage),
+      },
+    });
+    return;
+  }
+
+  await markProcessingFailed(bookId, currentStatus, errorMessage);
 }
 
 export async function detectChaptersForBook(
@@ -431,6 +514,102 @@ export async function detectChaptersForBook(
 
     console.warn(`Failed to detect chapters for book ${userBook.book.id}.`, error);
     throw badRequest(chapterDetectionErrorMessage);
+  }
+}
+
+export async function generateChunksForBook(
+  userId: string,
+  userBookId: string,
+): Promise<ChunkGenerationResult> {
+  const userBook = await findOwnedProcessingBook(userId, userBookId);
+
+  if (userBook.book.processingStatus === BookProcessingStatus.EXTRACTING_TEXT) {
+    throw conflict("This book is already being processed.");
+  }
+
+  if (
+    userBook.book.processingStatus !== BookProcessingStatus.CHUNKING &&
+    userBook.book.processingStatus !== BookProcessingStatus.READY
+  ) {
+    throw badRequest(missingChunkingPagesMessage);
+  }
+
+  const pages = await loadExtractedPages(userBook.book.id);
+
+  if (pages.length === 0 || pages.every((page) => !page.text?.trim())) {
+    await markChunkGenerationFailed(
+      userBook.book.id,
+      userBook.book.processingStatus,
+      missingChunkingPagesMessage,
+    ).catch(() => undefined);
+    throw badRequest(missingChunkingPagesMessage);
+  }
+
+  try {
+    const chunks = generateBookChunksFromPages(pages);
+
+    if (chunks.length === 0) {
+      await markChunkGenerationFailed(
+        userBook.book.id,
+        userBook.book.processingStatus,
+        missingChunkingPagesMessage,
+      );
+      throw badRequest(missingChunkingPagesMessage);
+    }
+
+    const chunkCount = await replaceBookChunks(userBook.book.id, chunks);
+    if (userBook.book.processingStatus === BookProcessingStatus.CHUNKING) {
+      const movedToReady = await updateProcessingStatus(
+        userBook.book.id,
+        BookProcessingStatus.CHUNKING,
+        BookProcessingStatus.READY,
+      );
+
+      if (!movedToReady) {
+        throw conflict("This book is no longer ready for chunking.");
+      }
+    } else {
+      await prisma.book.update({
+        where: {
+          id: userBook.book.id,
+        },
+        data: {
+          processingError: null,
+        },
+      });
+    }
+
+    const chapterCount = await countBookChapters(userBook.book.id);
+    const responseBook = serializeChunkGenerationResult(
+      {
+        ...userBook,
+        book: {
+          ...userBook.book,
+          processingStatus: BookProcessingStatus.READY,
+          processingError: null,
+        },
+      },
+      chapterCount,
+      chunkCount,
+    );
+
+    return {
+      book: responseBook,
+      message: "Book chunks generated.",
+    };
+  } catch (error) {
+    await markChunkGenerationFailed(
+      userBook.book.id,
+      userBook.book.processingStatus,
+      chunkGenerationErrorMessage,
+    ).catch(() => undefined);
+
+    if (error instanceof HttpError) {
+      throw error;
+    }
+
+    console.warn(`Failed to generate chunks for book ${userBook.book.id}.`, error);
+    throw badRequest(chunkGenerationErrorMessage);
   }
 }
 

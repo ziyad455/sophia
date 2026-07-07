@@ -32,3 +32,12 @@ export type ChapterDetectionResult = {
   book: ChapterDetectionBook;
   message: string;
 };
+
+export type ChunkGenerationBook = ChapterDetectionBook & {
+  chunkCount: number;
+};
+
+export type ChunkGenerationResult = {
+  book: ChunkGenerationBook;
+  message: string;
+};
