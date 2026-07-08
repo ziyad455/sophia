@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PrivatePlaceholderPage } from './pages/PrivatePlaceholderPage'
 import { PublicHomePage } from './pages/PublicHomePage'
+import { ReaderPage } from './pages/ReaderPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { UploadPage } from './pages/UploadPage'
 
@@ -85,10 +86,11 @@ function App() {
   }
 
   if (readerRoutePattern.test(pathname)) {
+    const userBookId = decodeURIComponent(pathname.slice('/reader/'.length))
+
     return (
       <ProtectedRoute>
-        {/* TODO: Replace with the reader page once user_books routes exist. */}
-        <LibraryPage />
+        <ReaderPage userBookId={userBookId} />
       </ProtectedRoute>
     )
   }

@@ -14,3 +14,29 @@ export type LibraryBook = {
 };
 
 export type UploadedLibraryBook = LibraryBook;
+
+export type ReaderChapter = {
+  id: string;
+  title: string | null;
+  chapterIndex: number;
+  pageStart: number | null;
+  pageEnd: number | null;
+};
+
+export type ReaderBook = {
+  userBookId: string;
+  bookId: string;
+  title: string;
+  author: string | null;
+  language: string;
+  processingStatus: string;
+  pageCount: number | null;
+  currentPage: number;
+  currentChapter: ReaderChapter | null;
+  pdfUrl: string;
+};
+
+export type ReaderData = {
+  book: ReaderBook;
+  chapters: ReaderChapter[];
+};

@@ -4,6 +4,7 @@ import type {
   ListBooksResponse,
   ProcessingStatusBook,
   ProcessingStatusResponse,
+  ReaderDataResponse,
   UpdateBookMetadataPayload,
   UpdateBookMetadataResponse,
   UploadBookPayload,
@@ -129,6 +130,54 @@ function normalizeProcessingStatusResponse(value: unknown): ProcessingStatusResp
   }
 }
 
+function getReaderNotReadyMessage(processingStatus: string): string {
+  if (processingStatus === 'uploaded') {
+    return 'This book has not been prepared for reading yet.'
+  }
+
+  if (processingStatus === 'extracting_text' || processingStatus === 'chunking') {
+    return 'This book is still being prepared.'
+  }
+
+  if (processingStatus === 'failed') {
+    return 'This book could not be prepared for reading.'
+  }
+
+  return 'This book is not ready to read yet.'
+}
+
+function normalizeReaderDataFromLibraryBook(value: unknown): ReaderDataResponse {
+  if (!isRecord(value)) {
+    throw new BooksApiError(0, 'We could not open this book right now.')
+  }
+
+  const book = normalizeBook(value.book, 0)
+
+  if (!book) {
+    throw new BooksApiError(0, 'We could not open this book right now.')
+  }
+
+  if (book.processingStatus !== 'ready') {
+    throw new BooksApiError(409, getReaderNotReadyMessage(book.processingStatus))
+  }
+
+  return {
+    book: {
+      userBookId: book.userBookId,
+      bookId: book.bookId,
+      title: book.title,
+      author: book.author,
+      language: book.language,
+      processingStatus: book.processingStatus,
+      pageCount: book.pageCount,
+      currentPage: 1,
+      currentChapter: null,
+      pdfUrl: `/books/${book.userBookId}/pdf`,
+    },
+    chapters: [],
+  }
+}
+
 function normalizeListBooksResponse(value: unknown): ListBooksResponse {
   if (!isRecord(value) || !Array.isArray(value.books)) {
     return { books: [] }
@@ -245,6 +294,26 @@ function toFriendlyProcessingError(status: number, fallback?: string): string {
   return fallback ?? 'Sophia could not prepare this book right now.'
 }
 
+function toFriendlyReaderError(status: number, fallback?: string): string {
+  if (status === 401) {
+    return 'Please sign in again before opening this book.'
+  }
+
+  if (status === 404) {
+    return 'We could not find this book in your library.'
+  }
+
+  if (status === 409) {
+    return fallback ?? 'This book is not ready to read yet.'
+  }
+
+  if (status >= 500) {
+    return 'We could not open this book right now.'
+  }
+
+  return fallback ?? 'We could not open this book right now.'
+}
+
 export async function listBooks(options: RequestOptions = {}): Promise<ListBooksResponse> {
   const response = await requestJson<unknown>('/books', options)
 
@@ -290,6 +359,22 @@ export async function getBookProcessingStatus(
   const response = await requestJson<unknown>(`/books/${userBookId}/processing-status`, options)
 
   return normalizeProcessingStatusResponse(response)
+}
+
+export async function getReaderData(userBookId: string): Promise<ReaderDataResponse> {
+  let response: unknown
+
+  try {
+    response = await requestJson<unknown>(`/books/${userBookId}`)
+  } catch (error) {
+    if (error instanceof BooksApiError) {
+      throw new BooksApiError(error.status, toFriendlyReaderError(error.status, error.message))
+    }
+
+    throw error
+  }
+
+  return normalizeReaderDataFromLibraryBook(response)
 }
 
 async function requestProcessingStep(path: string): Promise<ProcessingStatusResponse> {
