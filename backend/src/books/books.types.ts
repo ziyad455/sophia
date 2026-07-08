@@ -6,6 +6,7 @@ export type LibraryBook = {
   language: string;
   status: string;
   processingStatus: string;
+  processingError: string | null;
   pageCount: number | null;
   addedAt: string;
   lastOpenedAt: string | null;

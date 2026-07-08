@@ -7,6 +7,7 @@ export type LibraryBook = {
   language: string
   status: string
   processingStatus: string
+  processingError: string | null
   pageCount: number | null
   addedAt: string
   lastOpenedAt: string | null
@@ -38,4 +39,19 @@ export type UpdateBookMetadataPayload = {
 
 export type UpdateBookMetadataResponse = {
   book: LibraryBook
+}
+
+export type ProcessingStatusBook = {
+  userBookId: string
+  bookId: string
+  processingStatus: string
+  processingError: string | null
+  pageCount: number | null
+  chapterCount?: number
+  chunkCount?: number
+}
+
+export type ProcessingStatusResponse = {
+  book: ProcessingStatusBook
+  message?: string
 }

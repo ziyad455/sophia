@@ -1,6 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
-import { listBooks, updateBookMetadata, type LibraryBook } from '../books'
+import {
+  detectBookChapters,
+  generateBookChunks,
+  getBookProcessingStatus,
+  listBooks,
+  processBook,
+  updateBookMetadata,
+  type LibraryBook,
+  type ProcessingStatusBook,
+} from '../books'
 import { config } from '../config'
 import { navigate } from '../routing/navigation'
 import { applyTheme, readStoredTheme, themes, type ThemeId } from '../theme'
@@ -23,6 +32,80 @@ function formatStatus(value: string): string {
   const normalized = value.replace(/_/g, ' ').trim()
 
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : 'Uploaded'
+}
+
+function getProcessingStatusContent(value: string): {
+  label: string
+  description: string
+  dotClassName: string
+} {
+  switch (value) {
+    case 'uploaded':
+      return {
+        label: 'Uploaded',
+        description: 'Ready to prepare for focused reading.',
+        dotClassName: 'bg-sophia-text-muted',
+      }
+    case 'extracting_text':
+      return {
+        label: 'Extracting text',
+        description: 'Sophia is reading the pages.',
+        dotClassName: 'bg-sophia-primary',
+      }
+    case 'chunking':
+      return {
+        label: 'Preparing structure',
+        description: 'Sophia is organizing the book.',
+        dotClassName: 'bg-sophia-primary',
+      }
+    case 'ready':
+      return {
+        label: 'Ready',
+        description: 'Prepared for the reader.',
+        dotClassName: 'bg-sophia-primary',
+      }
+    case 'failed':
+      return {
+        label: 'Needs attention',
+        description: 'Processing failed before the book was ready.',
+        dotClassName: 'bg-sophia-text-muted',
+      }
+    default:
+      return {
+        label: formatStatus(value),
+        description: 'Sophia has recorded this book status.',
+        dotClassName: 'bg-sophia-text-muted',
+      }
+  }
+}
+
+function getBookActionLabel(book: LibraryBook, processingPhase?: string): string {
+  if (processingPhase) {
+    return 'Preparing...'
+  }
+
+  switch (book.processingStatus) {
+    case 'uploaded':
+      return 'Prepare for Reading'
+    case 'extracting_text':
+      return 'Processing...'
+    case 'chunking':
+      return 'Preparing...'
+    case 'ready':
+      return 'Open'
+    case 'failed':
+      return 'Retry Processing'
+    default:
+      return 'Prepare for Reading'
+  }
+}
+
+function canStartProcessing(book: LibraryBook, processingPhase?: string): boolean {
+  if (processingPhase) {
+    return false
+  }
+
+  return book.processingStatus === 'uploaded' || book.processingStatus === 'failed'
 }
 
 function getCoverImageUrl(coverUrl: string | null): string | null {
@@ -123,7 +206,24 @@ function BookCover({ book }: { book: LibraryBook }) {
   )
 }
 
-function BookCard({ book, onEdit }: { book: LibraryBook; onEdit: (book: LibraryBook) => void }) {
+function BookCard({
+  book,
+  onEdit,
+  onPrepare,
+  processingError,
+  processingPhase,
+}: {
+  book: LibraryBook
+  onEdit: (book: LibraryBook) => void
+  onPrepare: (book: LibraryBook) => void
+  processingError?: string
+  processingPhase?: string
+}) {
+  const status = getProcessingStatusContent(book.processingStatus)
+  const visibleError = processingError ?? (book.processingStatus === 'failed' ? book.processingError : null)
+  const actionEnabled = canStartProcessing(book, processingPhase)
+  const actionLabel = getBookActionLabel(book, processingPhase)
+
   return (
     <article className="grid min-w-0 gap-4">
       <BookCover book={book} />
@@ -137,18 +237,37 @@ function BookCard({ book, onEdit }: { book: LibraryBook; onEdit: (book: LibraryB
           </p>
         </div>
 
-        <div className="grid gap-1 text-xs text-sophia-text-muted">
-          <span>{formatStatus(book.processingStatus)}</span>
+        <div className="grid gap-2 text-xs text-sophia-text-muted">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="inline-flex min-h-7 items-center gap-2 rounded-full border border-sophia-border px-3 py-1 font-semibold text-sophia-text">
+              <span className={`h-2 w-2 rounded-full ${status.dotClassName}`} aria-hidden="true" />
+              {status.label}
+            </span>
+            {book.pageCount ? <span>{book.pageCount} pages</span> : null}
+          </div>
+          <span>{processingPhase ?? status.description}</span>
           <span>Added {formatDate(book.addedAt)}</span>
         </div>
 
-        <div className="mt-1 grid grid-cols-2 gap-2">
+        {visibleError ? (
+          <p className="m-0 rounded-lg border border-sophia-border bg-sophia-surface px-3 py-2 text-xs leading-5 text-sophia-primary">
+            {visibleError}
+          </p>
+        ) : null}
+
+        <div className="mt-1 grid gap-2">
           <button
-            className="min-h-10 rounded-lg border border-sophia-border px-3 text-sm font-semibold text-sophia-text disabled:cursor-not-allowed disabled:opacity-55"
+            className={`min-h-10 rounded-lg px-3 text-sm font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-55 ${
+              actionEnabled
+                ? 'bg-sophia-primary text-sophia-bg hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary'
+                : 'border border-sophia-border text-sophia-text'
+            }`}
             type="button"
-            disabled
+            disabled={!actionEnabled}
+            title={book.processingStatus === 'ready' ? 'Reader coming in Sprint 5' : undefined}
+            onClick={() => onPrepare(book)}
           >
-            Open
+            {actionLabel}
           </button>
           <button
             className="min-h-10 rounded-lg border border-sophia-border px-3 text-sm font-semibold text-sophia-text hover:border-sophia-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
@@ -310,6 +429,8 @@ export function LibraryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [editingBook, setEditingBook] = useState<LibraryBook | null>(null)
+  const [processingPhases, setProcessingPhases] = useState<Record<string, string>>({})
+  const [processingErrors, setProcessingErrors] = useState<Record<string, string>>({})
 
   async function loadLibrary(signal?: AbortSignal) {
     setLoading(true)
@@ -359,6 +480,108 @@ export function LibraryPage() {
       ),
     )
     setEditingBook(null)
+  }
+
+  function applyProcessingUpdate(updatedBook: ProcessingStatusBook) {
+    setBooks((currentBooks) =>
+      currentBooks.map((book) =>
+        book.userBookId === updatedBook.userBookId
+          ? {
+              ...book,
+              bookId: updatedBook.bookId || book.bookId,
+              processingStatus: updatedBook.processingStatus,
+              processingError: updatedBook.processingError,
+              pageCount: updatedBook.pageCount,
+            }
+          : book,
+      ),
+    )
+  }
+
+  function previewProcessingStatus(userBookId: string, processingStatus: string) {
+    setBooks((currentBooks) =>
+      currentBooks.map((book) =>
+        book.userBookId === userBookId
+          ? {
+              ...book,
+              processingStatus,
+              processingError: null,
+            }
+          : book,
+      ),
+    )
+  }
+
+  function setBookProcessingPhase(userBookId: string, phase: string | null) {
+    setProcessingPhases((currentPhases) => {
+      if (!phase) {
+        const nextPhases = { ...currentPhases }
+        delete nextPhases[userBookId]
+        return nextPhases
+      }
+
+      return {
+        ...currentPhases,
+        [userBookId]: phase,
+      }
+    })
+  }
+
+  function clearBookProcessingError(userBookId: string) {
+    setProcessingErrors((currentErrors) => {
+      if (!currentErrors[userBookId]) {
+        return currentErrors
+      }
+
+      const nextErrors = { ...currentErrors }
+      delete nextErrors[userBookId]
+      return nextErrors
+    })
+  }
+
+  async function syncBookProcessingStatus(userBookId: string) {
+    try {
+      const response = await getBookProcessingStatus(userBookId)
+      applyProcessingUpdate(response.book)
+    } catch {
+      return
+    }
+  }
+
+  async function handlePrepareBook(book: LibraryBook) {
+    const userBookId = book.userBookId
+
+    if (processingPhases[userBookId]) {
+      return
+    }
+
+    clearBookProcessingError(userBookId)
+
+    try {
+      setBookProcessingPhase(userBookId, 'Extracting text...')
+      previewProcessingStatus(userBookId, 'extracting_text')
+      const extraction = await processBook(userBookId)
+      applyProcessingUpdate(extraction.book)
+
+      setBookProcessingPhase(userBookId, 'Finding chapters...')
+      const chapters = await detectBookChapters(userBookId)
+      applyProcessingUpdate(chapters.book)
+
+      setBookProcessingPhase(userBookId, 'Preparing structure...')
+      const chunks = await generateBookChunks(userBookId)
+      applyProcessingUpdate(chunks.book)
+    } catch (requestError) {
+      setProcessingErrors((currentErrors) => ({
+        ...currentErrors,
+        [userBookId]:
+          requestError instanceof Error
+            ? requestError.message
+            : 'Sophia could not prepare this book right now.',
+      }))
+      await syncBookProcessingStatus(userBookId)
+    } finally {
+      setBookProcessingPhase(userBookId, null)
+    }
   }
 
   return (
@@ -498,7 +721,14 @@ export function LibraryPage() {
           {!loading && !error && books.length > 0 ? (
             <div className="grid grid-cols-1 gap-x-7 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {books.map((book) => (
-                <BookCard key={book.userBookId} book={book} onEdit={setEditingBook} />
+                <BookCard
+                  key={book.userBookId}
+                  book={book}
+                  onEdit={setEditingBook}
+                  onPrepare={handlePrepareBook}
+                  processingError={processingErrors[book.userBookId]}
+                  processingPhase={processingPhases[book.userBookId]}
+                />
               ))}
             </div>
           ) : null}

@@ -2,6 +2,8 @@ import { config } from '../config'
 import type {
   LibraryBook,
   ListBooksResponse,
+  ProcessingStatusBook,
+  ProcessingStatusResponse,
   UpdateBookMetadataPayload,
   UpdateBookMetadataResponse,
   UploadBookPayload,
@@ -10,7 +12,7 @@ import type {
 
 type RequestOptions = {
   body?: unknown
-  method?: 'GET' | 'PATCH'
+  method?: 'GET' | 'PATCH' | 'POST'
   signal?: AbortSignal
 }
 
@@ -74,10 +76,56 @@ function normalizeBook(value: unknown, index: number): LibraryBook | null {
     language: readString(value.language, 'en'),
     status: readString(value.status, 'active'),
     processingStatus: readString(value.processingStatus, 'uploaded'),
+    processingError: readNullableString(value.processingError),
     pageCount: readNullableNumber(value.pageCount),
     addedAt: readString(value.addedAt, new Date().toISOString()),
     lastOpenedAt: readNullableString(value.lastOpenedAt),
     coverUrl,
+  }
+}
+
+function normalizeProcessingBook(value: unknown): ProcessingStatusBook | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const userBookId = readString(value.userBookId)
+  const bookId = readString(value.bookId)
+
+  if (!userBookId || !bookId) {
+    return null
+  }
+
+  const chapterCount = readNullableNumber(value.chapterCount)
+  const chunkCount = readNullableNumber(value.chunkCount)
+
+  return {
+    userBookId,
+    bookId,
+    processingStatus: readString(value.processingStatus, 'uploaded'),
+    processingError: readNullableString(value.processingError),
+    pageCount: readNullableNumber(value.pageCount),
+    ...(chapterCount === null ? {} : { chapterCount }),
+    ...(chunkCount === null ? {} : { chunkCount }),
+  }
+}
+
+function normalizeProcessingStatusResponse(value: unknown): ProcessingStatusResponse {
+  if (!isRecord(value)) {
+    throw new BooksApiError(0, 'We could not read this book status right now.')
+  }
+
+  const book = normalizeProcessingBook(value.book)
+
+  if (!book) {
+    throw new BooksApiError(0, 'We could not read this book status right now.')
+  }
+
+  const message = readErrorMessage(value)
+
+  return {
+    book,
+    ...(message ? { message } : {}),
   }
 }
 
@@ -173,6 +221,30 @@ function toFriendlyUploadError(status: number, fallback?: string): string {
   return fallback ?? 'The book could not be added to your library.'
 }
 
+function toFriendlyProcessingError(status: number, fallback?: string): string {
+  if (status === 400) {
+    return fallback ?? 'Sophia could not read enough selectable text from this PDF.'
+  }
+
+  if (status === 401) {
+    return 'Please sign in again before preparing this book.'
+  }
+
+  if (status === 404) {
+    return 'We could not find this book in your library.'
+  }
+
+  if (status === 409) {
+    return fallback ?? 'This book is already being prepared.'
+  }
+
+  if (status >= 500) {
+    return 'Sophia could not prepare this book right now. Please try again.'
+  }
+
+  return fallback ?? 'Sophia could not prepare this book right now.'
+}
+
 export async function listBooks(options: RequestOptions = {}): Promise<ListBooksResponse> {
   const response = await requestJson<unknown>('/books', options)
 
@@ -209,6 +281,48 @@ export async function updateBookMetadata(
   }
 
   return { book }
+}
+
+export async function getBookProcessingStatus(
+  userBookId: string,
+  options: RequestOptions = {},
+): Promise<ProcessingStatusResponse> {
+  const response = await requestJson<unknown>(`/books/${userBookId}/processing-status`, options)
+
+  return normalizeProcessingStatusResponse(response)
+}
+
+async function requestProcessingStep(path: string): Promise<ProcessingStatusResponse> {
+  let response: unknown
+
+  try {
+    response = await requestJson<unknown>(path, {
+      method: 'POST',
+    })
+  } catch (error) {
+    if (error instanceof BooksApiError) {
+      throw new BooksApiError(
+        error.status,
+        toFriendlyProcessingError(error.status, error.message),
+      )
+    }
+
+    throw error
+  }
+
+  return normalizeProcessingStatusResponse(response)
+}
+
+export function processBook(userBookId: string): Promise<ProcessingStatusResponse> {
+  return requestProcessingStep(`/books/${userBookId}/process`)
+}
+
+export function detectBookChapters(userBookId: string): Promise<ProcessingStatusResponse> {
+  return requestProcessingStep(`/books/${userBookId}/chapters/detect`)
+}
+
+export function generateBookChunks(userBookId: string): Promise<ProcessingStatusResponse> {
+  return requestProcessingStep(`/books/${userBookId}/chunks/generate`)
 }
 
 export async function uploadBook(payload: UploadBookPayload): Promise<UploadBookResponse> {
