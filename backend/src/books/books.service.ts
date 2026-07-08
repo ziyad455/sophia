@@ -22,6 +22,7 @@ type UserBookWithBook = {
     language: string;
     filePath: string;
     processingStatus: BookProcessingStatus;
+    processingError: string | null;
     pageCount: number | null;
     coverPath: string | null;
   };
@@ -55,6 +56,7 @@ function serializeLibraryBook(userBook: UserBookWithBook): LibraryBook {
     language: userBook.book.language,
     status: serializeStatus(userBook.status),
     processingStatus: serializeStatus(userBook.book.processingStatus),
+    processingError: userBook.book.processingError,
     pageCount: userBook.book.pageCount,
     addedAt: userBook.addedAt.toISOString(),
     lastOpenedAt: userBook.lastOpenedAt?.toISOString() ?? null,
@@ -159,6 +161,7 @@ export async function listUserLibrary(userId: string): Promise<LibraryBook[]> {
           language: true,
           filePath: true,
           processingStatus: true,
+          processingError: true,
           pageCount: true,
           coverPath: true,
         },
@@ -190,6 +193,7 @@ export async function getUserLibraryBook(userId: string, userBookId: string): Pr
           language: true,
           filePath: true,
           processingStatus: true,
+          processingError: true,
           pageCount: true,
           coverPath: true,
         },
@@ -251,6 +255,7 @@ export async function updateUserLibraryBookMetadata(
             language: true,
             filePath: true,
             processingStatus: true,
+            processingError: true,
             pageCount: true,
             coverPath: true,
           },
@@ -337,6 +342,7 @@ export async function uploadPdfBook(input: UploadPdfBookInput): Promise<Uploaded
               language: true,
               filePath: true,
               processingStatus: true,
+              processingError: true,
               pageCount: true,
               coverPath: true,
             },
