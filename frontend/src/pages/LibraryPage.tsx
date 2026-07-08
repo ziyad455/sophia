@@ -108,6 +108,10 @@ function canStartProcessing(book: LibraryBook, processingPhase?: string): boolea
   return book.processingStatus === 'uploaded' || book.processingStatus === 'failed'
 }
 
+function canUsePrimaryBookAction(book: LibraryBook, processingPhase?: string): boolean {
+  return book.processingStatus === 'ready' || canStartProcessing(book, processingPhase)
+}
+
 function getCoverImageUrl(coverUrl: string | null): string | null {
   if (!coverUrl) {
     return null
@@ -209,20 +213,31 @@ function BookCover({ book }: { book: LibraryBook }) {
 function BookCard({
   book,
   onEdit,
+  onOpen,
   onPrepare,
   processingError,
   processingPhase,
 }: {
   book: LibraryBook
   onEdit: (book: LibraryBook) => void
+  onOpen: (book: LibraryBook) => void
   onPrepare: (book: LibraryBook) => void
   processingError?: string
   processingPhase?: string
 }) {
   const status = getProcessingStatusContent(book.processingStatus)
   const visibleError = processingError ?? (book.processingStatus === 'failed' ? book.processingError : null)
-  const actionEnabled = canStartProcessing(book, processingPhase)
+  const actionEnabled = canUsePrimaryBookAction(book, processingPhase)
   const actionLabel = getBookActionLabel(book, processingPhase)
+
+  function handlePrimaryAction() {
+    if (book.processingStatus === 'ready') {
+      onOpen(book)
+      return
+    }
+
+    onPrepare(book)
+  }
 
   return (
     <article className="grid min-w-0 gap-4">
@@ -264,8 +279,7 @@ function BookCard({
             }`}
             type="button"
             disabled={!actionEnabled}
-            title={book.processingStatus === 'ready' ? 'Reader coming in Sprint 5' : undefined}
-            onClick={() => onPrepare(book)}
+            onClick={handlePrimaryAction}
           >
             {actionLabel}
           </button>
@@ -471,6 +485,12 @@ export function LibraryPage() {
 
   function goToUpload() {
     navigate('/upload')
+  }
+
+  function openReader(book: LibraryBook) {
+    if (book.processingStatus === 'ready') {
+      navigate(`/reader/${book.userBookId}`)
+    }
   }
 
   function handleBookSaved(updatedBook: LibraryBook) {
@@ -725,6 +745,7 @@ export function LibraryPage() {
                   key={book.userBookId}
                   book={book}
                   onEdit={setEditingBook}
+                  onOpen={openReader}
                   onPrepare={handlePrepareBook}
                   processingError={processingErrors[book.userBookId]}
                   processingPhase={processingPhases[book.userBookId]}

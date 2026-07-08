@@ -5,6 +5,7 @@ import { parseUpdateBookMetadataDto } from "./books.dto";
 import {
   getUserLibraryBook,
   getUserLibraryBookCover,
+  getUserLibraryBookReaderData,
   listUserLibrary,
   updateUserLibraryBookMetadata,
   uploadPdfBook,
@@ -34,6 +35,17 @@ export async function getLibraryBookCover(req: ApiRequest, res: ApiResponse): Pr
   res.setHeader("Cache-Control", "private, max-age=86400");
   res.setHeader("Content-Type", cover.contentType);
   res.end(cover.buffer);
+}
+
+export async function getLibraryBookReaderData(
+  req: ApiRequest,
+  res: ApiResponse,
+): Promise<void> {
+  const { userId } = requireAuthContext(req);
+  const userBookId = req.params?.userBookId ?? "";
+  const readerData = await getUserLibraryBookReaderData(userId, userBookId);
+
+  res.status(200).json(readerData);
 }
 
 export async function updateLibraryBookMetadata(

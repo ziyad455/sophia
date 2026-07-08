@@ -6,7 +6,7 @@ import { config } from "../config";
 import { prisma } from "../db/prisma";
 import { conflict, notFound } from "../http/errors";
 import type { UpdateBookMetadataDto } from "./books.dto";
-import type { LibraryBook, UploadedLibraryBook } from "./books.types";
+import type { LibraryBook, ReaderChapter, ReaderData, UploadedLibraryBook } from "./books.types";
 import { generatePdfCoverThumbnail } from "./covers";
 import type { UploadedPdfFile } from "./upload";
 
@@ -45,6 +45,22 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 function serializeStatus(value: string): string {
   return value.toLowerCase();
+}
+
+function serializeReaderChapter(chapter: {
+  id: string;
+  title: string | null;
+  chapterIndex: number;
+  pageStart: number | null;
+  pageEnd: number | null;
+}): ReaderChapter {
+  return {
+    id: chapter.id,
+    title: chapter.title,
+    chapterIndex: chapter.chapterIndex,
+    pageStart: chapter.pageStart,
+    pageEnd: chapter.pageEnd,
+  };
 }
 
 function serializeLibraryBook(userBook: UserBookWithBook): LibraryBook {
@@ -208,6 +224,106 @@ export async function getUserLibraryBook(userId: string, userBookId: string): Pr
   const [bookWithCover] = await withMissingCoversGenerated([userBook]);
 
   return serializeLibraryBook(bookWithCover);
+}
+
+function getReaderStatusConflictMessage(status: BookProcessingStatus): string {
+  if (status === BookProcessingStatus.UPLOADED) {
+    return "This book has not been prepared for reading yet.";
+  }
+
+  if (
+    status === BookProcessingStatus.EXTRACTING_TEXT ||
+    status === BookProcessingStatus.CHUNKING
+  ) {
+    return "This book is still being prepared.";
+  }
+
+  if (status === BookProcessingStatus.FAILED) {
+    return "This book could not be prepared for reading.";
+  }
+
+  return "This book is not ready to read yet.";
+}
+
+export async function getUserLibraryBookReaderData(
+  userId: string,
+  userBookId: string,
+): Promise<ReaderData> {
+  if (!uuidPattern.test(userBookId)) {
+    throw notFound("Library entry not found.");
+  }
+
+  const userBook = await prisma.userBook.findFirst({
+    where: {
+      id: userBookId,
+      userId,
+    },
+    select: {
+      id: true,
+      readingProgress: {
+        select: {
+          currentPage: true,
+          currentChapter: {
+            select: {
+              id: true,
+              title: true,
+              chapterIndex: true,
+              pageStart: true,
+              pageEnd: true,
+            },
+          },
+        },
+      },
+      book: {
+        select: {
+          id: true,
+          title: true,
+          author: true,
+          language: true,
+          processingStatus: true,
+          pageCount: true,
+          chapters: {
+            orderBy: {
+              chapterIndex: "asc",
+            },
+            select: {
+              id: true,
+              title: true,
+              chapterIndex: true,
+              pageStart: true,
+              pageEnd: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!userBook) {
+    throw notFound("Library entry not found.");
+  }
+
+  if (userBook.book.processingStatus !== BookProcessingStatus.READY) {
+    throw conflict(getReaderStatusConflictMessage(userBook.book.processingStatus));
+  }
+
+  return {
+    book: {
+      userBookId: userBook.id,
+      bookId: userBook.book.id,
+      title: userBook.book.title,
+      author: userBook.book.author,
+      language: userBook.book.language,
+      processingStatus: serializeStatus(userBook.book.processingStatus),
+      pageCount: userBook.book.pageCount,
+      currentPage: userBook.readingProgress?.currentPage ?? 1,
+      currentChapter: userBook.readingProgress?.currentChapter
+        ? serializeReaderChapter(userBook.readingProgress.currentChapter)
+        : null,
+      pdfUrl: `/books/${userBook.id}/pdf`,
+    },
+    chapters: userBook.book.chapters.map(serializeReaderChapter),
+  };
 }
 
 export async function updateUserLibraryBookMetadata(
