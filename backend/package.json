@@ -5,6 +5,7 @@
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prestart": "npm run build",
     "start": "node dist/src/index.js",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run build && npm run db:validate",
