@@ -15,6 +15,7 @@ type RequestOptions = {
   body?: unknown
   method?: 'GET' | 'PATCH' | 'POST'
   signal?: AbortSignal
+  timeoutMs?: number
 }
 
 export class BooksApiError extends Error {
@@ -27,8 +28,76 @@ export class BooksApiError extends Error {
   }
 }
 
+const READER_DATA_TIMEOUT_MS = 15_000
+const PDF_BLOB_TIMEOUT_MS = 45_000
+
+type RequestAbortSignal = {
+  cleanup: () => void
+  didTimeout: () => boolean
+  signal?: AbortSignal
+}
+
 function booksUrl(path: string): string {
+  try {
+    const url = new URL(path)
+
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.toString()
+    }
+  } catch {
+    // Relative API paths are resolved against the configured backend base URL.
+  }
+
   return `${config.apiBaseUrl}${path}`
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function createRequestAbortSignal(
+  externalSignal: AbortSignal | undefined,
+  timeoutMs: number | undefined,
+): RequestAbortSignal {
+  if (!externalSignal && !timeoutMs) {
+    return {
+      cleanup: () => undefined,
+      didTimeout: () => false,
+    }
+  }
+
+  const controller = new AbortController()
+  let timedOut = false
+  let timeoutId: ReturnType<typeof window.setTimeout> | undefined
+
+  const abortFromExternalSignal = () => {
+    controller.abort(externalSignal?.reason)
+  }
+
+  if (externalSignal?.aborted) {
+    abortFromExternalSignal()
+  } else {
+    externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true })
+  }
+
+  if (timeoutMs) {
+    timeoutId = window.setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, timeoutMs)
+  }
+
+  return {
+    cleanup: () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+
+      externalSignal?.removeEventListener('abort', abortFromExternalSignal)
+    },
+    didTimeout: () => timedOut,
+    signal: controller.signal,
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -132,7 +201,7 @@ function normalizeProcessingStatusResponse(value: unknown): ProcessingStatusResp
 
 function getReaderNotReadyMessage(processingStatus: string): string {
   if (processingStatus === 'uploaded') {
-    return 'This book has not been prepared for reading yet.'
+    return 'This book has not been prepared yet.'
   }
 
   if (processingStatus === 'extracting_text' || processingStatus === 'chunking') {
@@ -146,35 +215,73 @@ function getReaderNotReadyMessage(processingStatus: string): string {
   return 'This book is not ready to read yet.'
 }
 
-function normalizeReaderDataFromLibraryBook(value: unknown): ReaderDataResponse {
+function normalizeReaderChapter(value: unknown, index: number): ReaderDataResponse['chapters'][number] | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const id = readString(value.id, `chapter-${index}`)
+  const chapterIndex = readNullableNumber(value.chapterIndex) ?? index + 1
+
+  return {
+    id,
+    title: readNullableString(value.title),
+    chapterIndex,
+    pageStart: readNullableNumber(value.pageStart),
+    pageEnd: readNullableNumber(value.pageEnd),
+  }
+}
+
+function normalizeReaderDataResponse(value: unknown): ReaderDataResponse {
   if (!isRecord(value)) {
     throw new BooksApiError(0, 'We could not open this book right now.')
   }
 
-  const book = normalizeBook(value.book, 0)
+  const rawBook = value.book
 
-  if (!book) {
+  if (!isRecord(rawBook)) {
     throw new BooksApiError(0, 'We could not open this book right now.')
   }
 
-  if (book.processingStatus !== 'ready') {
-    throw new BooksApiError(409, getReaderNotReadyMessage(book.processingStatus))
+  const userBookId = readString(rawBook.userBookId)
+  const bookId = readString(rawBook.bookId)
+  const processingStatus = readString(rawBook.processingStatus, 'uploaded')
+
+  if (!userBookId || !bookId) {
+    throw new BooksApiError(0, 'We could not open this book right now.')
   }
+
+  if (processingStatus !== 'ready') {
+    throw new BooksApiError(409, getReaderNotReadyMessage(processingStatus))
+  }
+
+  const currentPage = readNullableNumber(rawBook.currentPage) ?? 1
+  const currentChapterValue = rawBook.currentChapter
+  const currentChapter = currentChapterValue
+    ? normalizeReaderChapter(currentChapterValue, 0)
+    : null
+  const chapters = Array.isArray(value.chapters)
+    ? value.chapters
+        .map((chapter, index) => normalizeReaderChapter(chapter, index))
+        .filter((chapter): chapter is ReaderDataResponse['chapters'][number] =>
+          Boolean(chapter),
+        )
+    : []
 
   return {
     book: {
-      userBookId: book.userBookId,
-      bookId: book.bookId,
-      title: book.title,
-      author: book.author,
-      language: book.language,
-      processingStatus: book.processingStatus,
-      pageCount: book.pageCount,
-      currentPage: 1,
-      currentChapter: null,
-      pdfUrl: `/books/${book.userBookId}/pdf`,
+      userBookId,
+      bookId,
+      title: readString(rawBook.title, 'Untitled book'),
+      author: readNullableString(rawBook.author),
+      language: readString(rawBook.language, 'en'),
+      processingStatus,
+      pageCount: readNullableNumber(rawBook.pageCount),
+      currentPage,
+      currentChapter,
+      pdfUrl: readString(rawBook.pdfUrl, `/books/${userBookId}/pdf`),
     },
-    chapters: [],
+    chapters,
   }
 }
 
@@ -204,34 +311,44 @@ async function requestJson<TResponse>(
   path: string,
   options: RequestOptions = {},
 ): Promise<TResponse> {
-  let response: Response
+  const requestAbort = createRequestAbortSignal(options.signal, options.timeoutMs)
 
   try {
-    response = await fetch(booksUrl(path), {
+    const response = await fetch(booksUrl(path), {
       method: options.method ?? 'GET',
       credentials: 'include',
       headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
       body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: options.signal,
+      signal: requestAbort.signal,
     })
+
+    const data = await readJson(response)
+
+    if (!response.ok) {
+      throw new BooksApiError(
+        response.status,
+        readErrorMessage(data) ?? 'The request could not be completed.',
+      )
+    }
+
+    return data as TResponse
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (requestAbort.didTimeout()) {
+      throw new BooksApiError(0, 'Sophia took too long to respond. Please try again.')
+    }
+
+    if (isAbortError(error)) {
+      throw error
+    }
+
+    if (error instanceof BooksApiError) {
       throw error
     }
 
     throw new BooksApiError(0, 'Unable to reach Sophia. Check your connection and try again.')
+  } finally {
+    requestAbort.cleanup()
   }
-
-  const data = await readJson(response)
-
-  if (!response.ok) {
-    throw new BooksApiError(
-      response.status,
-      readErrorMessage(data) ?? 'The request could not be completed.',
-    )
-  }
-
-  return data as TResponse
 }
 
 function toFriendlyMetadataError(status: number): string {
@@ -314,6 +431,26 @@ function toFriendlyReaderError(status: number, fallback?: string): string {
   return fallback ?? 'We could not open this book right now.'
 }
 
+function toFriendlyPdfError(status: number, fallback?: string): string {
+  if (status === 401) {
+    return 'Please sign in again before opening this PDF.'
+  }
+
+  if (status === 404) {
+    return 'We could not find this PDF in your library.'
+  }
+
+  if (status === 409) {
+    return fallback ?? 'This book is not ready to read yet.'
+  }
+
+  if (status >= 500) {
+    return 'We could not load this PDF right now.'
+  }
+
+  return fallback ?? 'We could not load this PDF right now.'
+}
+
 export async function listBooks(options: RequestOptions = {}): Promise<ListBooksResponse> {
   const response = await requestJson<unknown>('/books', options)
 
@@ -365,7 +502,9 @@ export async function getReaderData(userBookId: string): Promise<ReaderDataRespo
   let response: unknown
 
   try {
-    response = await requestJson<unknown>(`/books/${userBookId}`)
+    response = await requestJson<unknown>(`/books/${userBookId}/reader`, {
+      timeoutMs: READER_DATA_TIMEOUT_MS,
+    })
   } catch (error) {
     if (error instanceof BooksApiError) {
       throw new BooksApiError(error.status, toFriendlyReaderError(error.status, error.message))
@@ -374,7 +513,62 @@ export async function getReaderData(userBookId: string): Promise<ReaderDataRespo
     throw error
   }
 
-  return normalizeReaderDataFromLibraryBook(response)
+  return normalizeReaderDataResponse(response)
+}
+
+export async function fetchBookPdfBlob(
+  pdfUrl: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<Blob> {
+  const requestAbort = createRequestAbortSignal(options.signal, PDF_BLOB_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(booksUrl(pdfUrl), {
+      method: 'GET',
+      credentials: 'include',
+      signal: requestAbort.signal,
+    })
+
+    const data = await readJson(response)
+
+    if (!response.ok) {
+      throw new BooksApiError(
+        response.status,
+        toFriendlyPdfError(response.status, readErrorMessage(data)),
+      )
+    }
+
+    const blob = await response.blob()
+
+    if (blob.size === 0) {
+      throw new BooksApiError(0, 'This PDF file is empty.')
+    }
+
+    return blob
+  } catch (error) {
+    if (requestAbort.didTimeout()) {
+      throw new BooksApiError(0, 'This PDF took too long to load. Please try again.')
+    }
+
+    if (isAbortError(error)) {
+      throw error
+    }
+
+    if (error instanceof BooksApiError) {
+      throw error
+    }
+
+    throw new BooksApiError(0, 'Unable to reach Sophia. Check your connection and try again.')
+  } finally {
+    requestAbort.cleanup()
+  }
+}
+
+export function getBookPdfUrl(pdfUrl: string, pageNumber = 1): string {
+  const safePageNumber = Number.isInteger(pageNumber) && pageNumber > 0 ? pageNumber : 1
+  const urlWithoutHash = booksUrl(pdfUrl).split('#')[0]
+
+  return `${urlWithoutHash}#page=${safePageNumber}`
 }
 
 async function requestProcessingStep(path: string): Promise<ProcessingStatusResponse> {

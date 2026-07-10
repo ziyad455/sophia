@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { BookProcessingStatus, BookSourceType, UserBookStatus } from "@prisma/client";
 import { config } from "../config";
@@ -31,6 +31,11 @@ type UserBookWithBook = {
 export type BookCoverFile = {
   buffer: Buffer;
   contentType: "image/webp";
+};
+
+export type BookPdfFile = {
+  absolutePath: string;
+  sizeBytes: number;
 };
 
 export type UploadPdfBookInput = {
@@ -228,7 +233,7 @@ export async function getUserLibraryBook(userId: string, userBookId: string): Pr
 
 function getReaderStatusConflictMessage(status: BookProcessingStatus): string {
   if (status === BookProcessingStatus.UPLOADED) {
-    return "This book has not been prepared for reading yet.";
+    return "This book has not been prepared yet.";
   }
 
   if (
@@ -530,4 +535,55 @@ export async function getUserLibraryBookCover(
   } catch {
     throw notFound("Book cover not found.");
   }
+}
+
+export async function getUserLibraryBookPdf(
+  userId: string,
+  userBookId: string,
+): Promise<BookPdfFile> {
+  if (!uuidPattern.test(userBookId)) {
+    throw notFound("Book PDF not found.");
+  }
+
+  const userBook = await prisma.userBook.findFirst({
+    where: {
+      id: userBookId,
+      userId,
+    },
+    select: {
+      book: {
+        select: {
+          filePath: true,
+          processingStatus: true,
+        },
+      },
+    },
+  });
+
+  if (!userBook) {
+    throw notFound("Book PDF not found.");
+  }
+
+  if (userBook.book.processingStatus !== BookProcessingStatus.READY) {
+    throw conflict(getReaderStatusConflictMessage(userBook.book.processingStatus));
+  }
+
+  let absolutePath: string;
+
+  try {
+    absolutePath = resolveUploadPath(userBook.book.filePath);
+  } catch {
+    throw notFound("Book PDF not found.");
+  }
+
+  const fileStats = await stat(absolutePath).catch(() => null);
+
+  if (!fileStats?.isFile()) {
+    throw notFound("Book PDF not found.");
+  }
+
+  return {
+    absolutePath,
+    sizeBytes: fileStats.size,
+  };
 }

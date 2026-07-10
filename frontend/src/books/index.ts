@@ -1,6 +1,8 @@
 export {
   BooksApiError,
   detectBookChapters,
+  fetchBookPdfBlob,
+  getBookPdfUrl,
   generateBookChunks,
   getBookProcessingStatus,
   getReaderData,
