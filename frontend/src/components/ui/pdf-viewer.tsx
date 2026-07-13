@@ -2,12 +2,13 @@
 
 import * as React from "react"
 import { createPluginRegistration, refreshPages } from "@embedpdf/core"
-import { EmbedPDF, useRegistry } from "@embedpdf/core/react"
-import type {
-  PdfDocumentObject,
-  PdfEngine,
-  Rect,
-  Rotation,
+import { EmbedPDF, useDocumentState, useRegistry } from "@embedpdf/core/react"
+import {
+  PdfErrorCode,
+  type PdfDocumentObject,
+  type PdfEngine,
+  type Rect,
+  type Rotation,
 } from "@embedpdf/models"
 import {
   DocumentManagerPluginPackage,
@@ -19,7 +20,10 @@ import {
   InteractionManagerPluginPackage,
   PagePointerProvider,
 } from "@embedpdf/plugin-interaction-manager/react"
-import { RenderLayer, RenderPluginPackage } from "@embedpdf/plugin-render/react"
+import {
+  RenderPluginPackage,
+  useRenderCapability,
+} from "@embedpdf/plugin-render/react"
 import { Rotate, RotatePluginPackage } from "@embedpdf/plugin-rotate/react"
 import {
   ScrollPluginPackage,
@@ -143,6 +147,9 @@ export type PDFViewerProps = {
   renderPageOverlay?: (props: PDFViewerPageOverlayProps) => React.ReactNode
   onActivePageChange?: (pageNumber: number) => void
   onDocumentLoadSuccess?: (numPages: number) => void
+  onDocumentLoadError?: (error: Error) => void
+  onPageRenderSuccess?: (pageNumber: number) => void
+  onPageRenderError?: (error: Error, pageNumber: number) => void
   onPdfUpload?: (file: File) => void
   onPagePointerDown?: (
     event: React.PointerEvent<HTMLDivElement>,
@@ -208,6 +215,35 @@ function arePageIndexSetsEqual(left: Set<number>, right: Set<number>) {
 
 function normalizeRotation(rotation: number): Rotation {
   return (((rotation % 4) + 4) % 4) as Rotation
+}
+
+function toPdfViewerError(error: unknown, fallbackMessage: string): Error {
+  if (error instanceof Error) return error
+
+  if (error && typeof error === "object" && "reason" in error) {
+    const reason = (error as { reason?: unknown }).reason
+
+    if (reason instanceof Error) return reason
+
+    if (reason && typeof reason === "object" && "message" in reason) {
+      const message = (reason as { message?: unknown }).message
+
+      if (typeof message === "string" && message) return new Error(message)
+    }
+
+    if (typeof reason === "string" && reason) return new Error(reason)
+  }
+
+  return new Error(fallbackMessage)
+}
+
+function isAbortedPdfTask(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "type" in error &&
+      (error as { type?: unknown }).type === "abort"
+  )
 }
 
 function useSharedPdfEngine() {
@@ -1441,6 +1477,113 @@ function PDFViewerSelectionCopyShortcut({
   return null
 }
 
+function PDFViewerRenderLayer({
+  className,
+  documentId,
+  dpr,
+  onRenderError,
+  onRenderSuccess,
+  pageIndex,
+  scale,
+}: {
+  className?: string
+  documentId: string
+  dpr: number
+  onRenderError?: (error: Error, pageNumber: number) => void
+  onRenderSuccess?: (pageNumber: number) => void
+  pageIndex: number
+  scale: number
+}) {
+  const { provides: render } = useRenderCapability()
+  const documentState = useDocumentState(documentId)
+  const [imageUrl, setImageUrl] = React.useState<string | null>(null)
+  const imageUrlRef = React.useRef<string | null>(null)
+  const onRenderErrorRef = React.useRef(onRenderError)
+  const onRenderSuccessRef = React.useRef(onRenderSuccess)
+  const refreshVersion = documentState?.pageRefreshVersions[pageIndex] ?? 0
+  const pageNumber = pageIndex + 1
+
+  React.useEffect(() => {
+    onRenderErrorRef.current = onRenderError
+    onRenderSuccessRef.current = onRenderSuccess
+  }, [onRenderError, onRenderSuccess])
+
+  React.useEffect(() => {
+    if (!render) return
+
+    let active = true
+    const task = render.forDocument(documentId).renderPage({
+      pageIndex,
+      options: {
+        dpr,
+        scaleFactor: scale,
+      },
+    })
+
+    task.wait(
+      (blob) => {
+        if (!active) return
+
+        const nextImageUrl = URL.createObjectURL(blob)
+        imageUrlRef.current = nextImageUrl
+        setImageUrl(nextImageUrl)
+      },
+      (error) => {
+        if (!active || isAbortedPdfTask(error)) return
+
+        onRenderErrorRef.current?.(
+          toPdfViewerError(error, `Unable to render page ${pageNumber}.`),
+          pageNumber
+        )
+      }
+    )
+
+    return () => {
+      active = false
+
+      if (imageUrlRef.current) {
+        URL.revokeObjectURL(imageUrlRef.current)
+        imageUrlRef.current = null
+      } else {
+        task.abort({
+          code: PdfErrorCode.Cancelled,
+          message: "Page render was cancelled.",
+        })
+      }
+    }
+  }, [documentId, dpr, pageIndex, pageNumber, refreshVersion, render, scale])
+
+  if (!imageUrl) return null
+
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={className}
+      src={imageUrl}
+      onError={() => {
+        if (imageUrlRef.current === imageUrl) {
+          URL.revokeObjectURL(imageUrlRef.current)
+          imageUrlRef.current = null
+        }
+
+        onRenderErrorRef.current?.(
+          new Error(`The rendered image for page ${pageNumber} could not be displayed.`),
+          pageNumber
+        )
+      }}
+      onLoad={() => {
+        if (imageUrlRef.current === imageUrl) {
+          URL.revokeObjectURL(imageUrlRef.current)
+          imageUrlRef.current = null
+        }
+
+        onRenderSuccessRef.current?.(pageNumber)
+      }}
+    />
+  )
+}
+
 function isQuarterTurn(rotation: Rotation) {
   return rotation % 2 === 1
 }
@@ -1762,6 +1905,8 @@ type PDFViewerInnerProps = {
   pageClassName?: (pageNumber: number) => string | undefined
   renderPageOverlay?: (props: PDFViewerPageOverlayProps) => React.ReactNode
   onActivePageChange?: (pageNumber: number) => void
+  onPageRenderSuccess?: PDFViewerProps["onPageRenderSuccess"]
+  onPageRenderError?: PDFViewerProps["onPageRenderError"]
   onPdfUpload?: (file: File) => void
   onPagePointerDown?: PDFViewerProps["onPagePointerDown"]
   onPagePointerMove?: PDFViewerProps["onPagePointerMove"]
@@ -1786,6 +1931,8 @@ function PDFViewerInner({
   pageClassName,
   renderPageOverlay,
   onActivePageChange,
+  onPageRenderSuccess,
+  onPageRenderError,
   onPdfUpload,
   onPagePointerDown,
   onPagePointerMove,
@@ -2157,11 +2304,13 @@ function PDFViewerInner({
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 bg-white"
             />
-            <RenderLayer
+            <PDFViewerRenderLayer
               documentId={documentId}
               pageIndex={page.pageIndex}
               scale={Math.min(currentZoomLevel, PAGE_BASE_RENDER_MAX_SCALE)}
               dpr={PAGE_BASE_RENDER_DPR}
+              onRenderError={onPageRenderError}
+              onRenderSuccess={onPageRenderSuccess}
               className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-100 blur-[0.35px] transition-none"
             />
             <TilingLayer
@@ -2200,6 +2349,8 @@ function PDFViewerInner({
       onPagePointerDown,
       onPagePointerMove,
       onPagePointerUp,
+      onPageRenderError,
+      onPageRenderSuccess,
       pageClassName,
       pageRotationDeltas,
       renderPageOverlay,
@@ -2445,22 +2596,26 @@ function PDFViewerInner({
 
 function PDFViewerDocumentLoader({
   pdfFile,
+  onDocumentLoadError,
   onDocumentLoadSuccess,
   ...innerProps
 }: {
   pdfFile: string
+  onDocumentLoadError?: (error: Error) => void
   onDocumentLoadSuccess?: (numPages: number) => void
 } & Omit<PDFViewerInnerProps, "pdfFile" | "documentId" | "document">) {
   const { provides: documentManager } = useDocumentManagerCapability()
   const { activeDocumentId, activeDocument } = useActiveDocument()
-  const [loadError, setLoadError] = React.useState(false)
+  const [loadError, setLoadError] = React.useState<Error | null>(null)
   const openedFileRef = React.useRef<string | null>(null)
   const loadRequestIdRef = React.useRef(0)
+  const onDocumentLoadErrorRef = React.useRef(onDocumentLoadError)
   const onDocumentLoadSuccessRef = React.useRef(onDocumentLoadSuccess)
 
   React.useEffect(() => {
+    onDocumentLoadErrorRef.current = onDocumentLoadError
     onDocumentLoadSuccessRef.current = onDocumentLoadSuccess
-  })
+  }, [onDocumentLoadError, onDocumentLoadSuccess])
 
   React.useEffect(() => {
     if (!documentManager || !pdfFile) {
@@ -2472,11 +2627,12 @@ function PDFViewerDocumentLoader({
 
     const requestId = loadRequestIdRef.current + 1
     let loadTimeoutId: ReturnType<typeof window.setTimeout> | undefined
+    let openFrameId = 0
     let cancelled = false
 
     loadRequestIdRef.current = requestId
     openedFileRef.current = pdfFile
-    setLoadError(false)
+    setLoadError(null)
 
     const isCurrentLoad = () =>
       !cancelled &&
@@ -2491,42 +2647,49 @@ function PDFViewerDocumentLoader({
     const previousDocumentIds = documentManager
       .getOpenDocuments()
       .map((openDocument) => openDocument.id)
-    const handleOpenError = () => {
+    const handleOpenError = (error?: unknown) => {
       if (!isCurrentLoad()) return
 
       clearLoadTimeout()
-      setLoadError(true)
+      const nextError = toPdfViewerError(error, "Unable to open this PDF document.")
+      setLoadError(nextError)
+      onDocumentLoadErrorRef.current?.(nextError)
     }
 
     loadTimeoutId = window.setTimeout(() => {
       if (isCurrentLoad()) {
-        setLoadError(true)
+        handleOpenError(new Error("The PDF document did not finish loading."))
       }
     }, PDF_DOCUMENT_LOAD_TIMEOUT_MS)
 
-    documentManager
-      .openDocumentUrl({
-        url: pdfFile,
-        mode: pdfFile.startsWith("blob:") ? "full-fetch" : "auto",
-      })
-      .wait((response) => {
-        response.task.wait((openedDocument) => {
-          if (!isCurrentLoad()) return
+    openFrameId = window.requestAnimationFrame(() => {
+      if (!isCurrentLoad()) return
 
-          clearLoadTimeout()
-          setLoadError(false)
-          onDocumentLoadSuccessRef.current?.(openedDocument.pageCount)
-          previousDocumentIds.forEach((documentIdToClose) => {
-            documentManager.closeDocument(documentIdToClose).wait(
-              () => undefined,
-              () => undefined
-            )
-          })
+      documentManager
+        .openDocumentUrl({
+          url: pdfFile,
+          mode: pdfFile.startsWith("blob:") ? "full-fetch" : "auto",
+        })
+        .wait((response) => {
+          response.task.wait((openedDocument) => {
+            if (!isCurrentLoad()) return
+
+            clearLoadTimeout()
+            setLoadError(null)
+            onDocumentLoadSuccessRef.current?.(openedDocument.pageCount)
+            previousDocumentIds.forEach((documentIdToClose) => {
+              documentManager.closeDocument(documentIdToClose).wait(
+                () => undefined,
+                () => undefined
+              )
+            })
+          }, handleOpenError)
         }, handleOpenError)
-      }, handleOpenError)
+    })
 
     return () => {
       cancelled = true
+      window.cancelAnimationFrame(openFrameId)
       clearLoadTimeout()
 
       if (loadRequestIdRef.current === requestId && openedFileRef.current === pdfFile) {
@@ -2537,7 +2700,7 @@ function PDFViewerDocumentLoader({
 
   const document =
     activeDocument?.status === "loaded" ? activeDocument.document : null
-  const documentFailed = loadError || activeDocument?.status === "error"
+  const documentFailed = Boolean(loadError) || activeDocument?.status === "error"
 
   if (!activeDocumentId || documentFailed || !pdfFile) {
     return (
@@ -2582,6 +2745,9 @@ export const PDFViewer = React.forwardRef<PDFViewerHandle, PDFViewerProps>(
       renderPageOverlay,
       onActivePageChange,
       onDocumentLoadSuccess,
+      onDocumentLoadError,
+      onPageRenderSuccess,
+      onPageRenderError,
       onPdfUpload,
       onPagePointerDown,
       onPagePointerMove,
@@ -2591,6 +2757,7 @@ export const PDFViewer = React.forwardRef<PDFViewerHandle, PDFViewerProps>(
     ref
   ) {
     const { engine, error: engineError } = useSharedPdfEngine()
+    const onDocumentLoadErrorRef = React.useRef(onDocumentLoadError)
     const [uploadedPdfFile, setUploadedPdfFile] = React.useState<{
       src: string | undefined
       url: string | null
@@ -2598,6 +2765,16 @@ export const PDFViewer = React.forwardRef<PDFViewerHandle, PDFViewerProps>(
     const uploadedPdfUrl =
       uploadedPdfFile.src === src ? uploadedPdfFile.url : null
     const pdfFile = uploadedPdfUrl ?? src ?? ""
+
+    React.useEffect(() => {
+      onDocumentLoadErrorRef.current = onDocumentLoadError
+    }, [onDocumentLoadError])
+
+    React.useEffect(() => {
+      if (engineError) {
+        onDocumentLoadErrorRef.current?.(engineError)
+      }
+    }, [engineError])
 
     React.useEffect(
       () => () => {
@@ -2705,7 +2882,10 @@ export const PDFViewer = React.forwardRef<PDFViewerHandle, PDFViewerProps>(
           pageClassName={pageClassName}
           renderPageOverlay={renderPageOverlay}
           onActivePageChange={onActivePageChange}
+          onDocumentLoadError={onDocumentLoadError}
           onDocumentLoadSuccess={onDocumentLoadSuccess}
+          onPageRenderSuccess={onPageRenderSuccess}
+          onPageRenderError={onPageRenderError}
           onPdfUpload={onPdfUpload}
           onPagePointerDown={onPagePointerDown}
           onPagePointerMove={onPagePointerMove}

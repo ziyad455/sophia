@@ -1,7 +1,7 @@
 import type { PdfDocumentObject, PdfEngine } from "@embedpdf/models"
 import pdfiumWasmUrl from "../../node_modules/@embedpdf/pdfium/dist/pdfium.wasm?url"
 
-const PDFIUM_WASM_URL = pdfiumWasmUrl
+const PDFIUM_WASM_URL = new URL(pdfiumWasmUrl, import.meta.url).href
 
 let sharedEnginePromise: Promise<PdfEngine> | null = null
 const pdfDocumentCache = new Map<string, Promise<PdfDocumentObject>>()
