@@ -6,7 +6,9 @@ export {
 } from './reader-preferences.defaults'
 export type {
   PdfFitMode,
+  ReaderMode,
   ReaderPreferences,
   ReaderPreferencesUpdate,
   ReaderTheme,
+  ReadingFontFamily,
 } from './reader-preferences.types'

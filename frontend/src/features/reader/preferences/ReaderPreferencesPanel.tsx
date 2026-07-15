@@ -11,12 +11,17 @@ import {
   PDF_FIT_MODES,
   PDF_ZOOM_OPTIONS,
   READER_THEMES,
+  READING_CONTENT_WIDTHS,
+  READING_FONT_FAMILIES,
+  READING_FONT_SIZES,
+  READING_LINE_HEIGHTS,
 } from './reader-preferences.defaults'
 import type {
   PdfFitMode,
   ReaderPreferences,
   ReaderPreferencesUpdate,
   ReaderTheme,
+  ReadingFontFamily,
 } from './reader-preferences.types'
 
 type ReaderPreferencesPanelProps = {
@@ -65,7 +70,9 @@ export function ReaderPreferencesPanel({
             Reader settings
           </PopoverTitle>
           <PopoverDescription className="text-sm text-sophia-text-muted">
-            Applied to every book in your library.
+            {preferences.readerMode === 'pdf'
+              ? 'Settings for the original document.'
+              : 'Typography for Sophia Reading Mode.'}
           </PopoverDescription>
         </PopoverHeader>
 
@@ -88,54 +95,140 @@ export function ReaderPreferencesPanel({
             </select>
           </label>
 
-          <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
-            Page sizing
-            <select
-              className={fieldClassName}
-              value={preferences.pdfFitMode}
-              disabled={loading}
-              onChange={(event) =>
-                onChange({ pdfFitMode: event.target.value as PdfFitMode })
-              }
-            >
-              {PDF_FIT_MODES.map((mode) => (
-                <option key={mode.value} value={mode.value}>
-                  {mode.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {preferences.readerMode === 'pdf' ? (
+            <>
+              <p className="m-0 text-xs font-bold uppercase text-sophia-text-muted">
+                Original PDF
+              </p>
+              <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
+                Page sizing
+                <select
+                  className={fieldClassName}
+                  value={preferences.pdfFitMode}
+                  disabled={loading}
+                  onChange={(event) =>
+                    onChange({ pdfFitMode: event.target.value as PdfFitMode })
+                  }
+                >
+                  {PDF_FIT_MODES.map((mode) => (
+                    <option key={mode.value} value={mode.value}>
+                      {mode.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          {preferences.pdfFitMode === 'custom' ? (
-            <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
-              Zoom
-              <select
-                className={fieldClassName}
-                value={preferences.pdfZoom}
-                disabled={loading}
-                onChange={(event) => onChange({ pdfZoom: Number(event.target.value) })}
-              >
-                {PDF_ZOOM_OPTIONS.map((zoom) => (
-                  <option key={zoom} value={zoom}>
-                    {zoom}%
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
+              {preferences.pdfFitMode === 'custom' ? (
+                <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
+                  Zoom
+                  <select
+                    className={fieldClassName}
+                    value={preferences.pdfZoom}
+                    disabled={loading}
+                    onChange={(event) => onChange({ pdfZoom: Number(event.target.value) })}
+                  >
+                    {PDF_ZOOM_OPTIONS.map((zoom) => (
+                      <option key={zoom} value={zoom}>
+                        {zoom}%
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
 
-          <label className="flex min-h-11 items-center justify-between gap-4 rounded-md border border-sophia-border bg-sophia-bg px-3 text-sm font-medium text-sophia-text">
-            Open thumbnails by default
-            <input
-              type="checkbox"
-              className="h-5 w-5 accent-sophia-primary"
-              checked={preferences.readerSidebarOpen}
-              disabled={loading}
-              onChange={(event) =>
-                onChange({ readerSidebarOpen: event.target.checked })
-              }
-            />
-          </label>
+              <label className="flex min-h-11 items-center justify-between gap-4 rounded-md border border-sophia-border bg-sophia-bg px-3 text-sm font-medium text-sophia-text">
+                Open thumbnails by default
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-sophia-primary"
+                  checked={preferences.readerSidebarOpen}
+                  disabled={loading}
+                  onChange={(event) =>
+                    onChange({ readerSidebarOpen: event.target.checked })
+                  }
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <p className="m-0 text-xs font-bold uppercase text-sophia-text-muted">
+                Reading Mode
+              </p>
+              <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
+                Reading type
+                <select
+                  className={fieldClassName}
+                  value={preferences.readingFontFamily}
+                  disabled={loading}
+                  onChange={(event) =>
+                    onChange({
+                      readingFontFamily: event.target.value as ReadingFontFamily,
+                    })
+                  }
+                >
+                  {READING_FONT_FAMILIES.map((font) => (
+                    <option key={font.value} value={font.value}>
+                      {font.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
+                Text size
+                <select
+                  className={fieldClassName}
+                  value={preferences.readingFontSize}
+                  disabled={loading}
+                  onChange={(event) =>
+                    onChange({ readingFontSize: Number(event.target.value) })
+                  }
+                >
+                  {READING_FONT_SIZES.map((fontSize) => (
+                    <option key={fontSize} value={fontSize}>
+                      {fontSize}px
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
+                Line spacing
+                <select
+                  className={fieldClassName}
+                  value={preferences.readingLineHeight}
+                  disabled={loading}
+                  onChange={(event) =>
+                    onChange({ readingLineHeight: Number(event.target.value) })
+                  }
+                >
+                  {READING_LINE_HEIGHTS.map((lineHeight) => (
+                    <option key={lineHeight} value={lineHeight}>
+                      {lineHeight}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
+                Text width
+                <select
+                  className={fieldClassName}
+                  value={preferences.readingContentWidth}
+                  disabled={loading}
+                  onChange={(event) =>
+                    onChange({ readingContentWidth: Number(event.target.value) })
+                  }
+                >
+                  {READING_CONTENT_WIDTHS.map((width) => (
+                    <option key={width.value} value={width.value}>
+                      {width.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
         </div>
 
         <div className="flex min-h-8 items-center justify-between gap-3 border-t border-sophia-border pt-3">

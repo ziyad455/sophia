@@ -67,6 +67,28 @@ export type ReaderDataResponse = {
   chapters: ReaderChapter[]
 }
 
+export type ReadingContentPage = {
+  pageNumber: number
+  text: string
+}
+
+export type ReadingContentChapter = ReaderChapter & {
+  pages: ReadingContentPage[]
+}
+
+export type ReadingContentResponse = {
+  book: {
+    userBookId: string
+    bookId: string
+    title: string
+    author: string | null
+    language: string
+    pageCount: number | null
+  }
+  chapters: ReadingContentChapter[]
+  unassignedPages: ReadingContentPage[]
+}
+
 export type ProcessingStatusBook = {
   userBookId: string
   bookId: string

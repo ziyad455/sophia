@@ -123,7 +123,10 @@ export function useReaderPreferences() {
   }, [])
 
   const resetPreferences = useCallback(() => {
-    updatePreferences({ ...DEFAULT_READER_PREFERENCES })
+    updatePreferences({
+      ...DEFAULT_READER_PREFERENCES,
+      readerMode: preferencesRef.current.readerMode,
+    })
   }, [updatePreferences])
 
   return {

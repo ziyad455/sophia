@@ -5,6 +5,7 @@ import {
   getLibraryBookCover,
   getLibraryBookPdf,
   getLibraryBookReaderData,
+  getLibraryBookReadingContent,
   listLibrary,
   updateLibraryBookMetadata,
   uploadBook,
@@ -18,6 +19,11 @@ export function createBooksRouter() {
   router.get("/", requireAuth, asyncHandler(listLibrary));
   router.post("/upload", requireAuth, asyncHandler(uploadBook));
   router.get("/:userBookId/reader", requireAuth, asyncHandler(getLibraryBookReaderData));
+  router.get(
+    "/:userBookId/reading-content",
+    requireAuth,
+    asyncHandler(getLibraryBookReadingContent),
+  );
   router.get("/:userBookId/pdf", requireAuth, asyncHandler(getLibraryBookPdf));
   router.get("/:userBookId/cover", requireAuth, asyncHandler(getLibraryBookCover));
   router.patch("/:userBookId/metadata", requireAuth, asyncHandler(updateLibraryBookMetadata));

@@ -3,7 +3,9 @@ import { ZoomMode } from '@embedpdf/plugin-zoom/react'
 import {
   BooksApiError,
   fetchBookPdfBlob,
+  getReadingContent,
   getReaderData,
+  type ReadingContentResponse,
   type ReaderDataResponse,
 } from '../books'
 import { navigate } from '../routing/navigation'
@@ -15,11 +17,17 @@ import {
 import { ReaderHeader } from '../features/reader/ReaderHeader'
 import { ReaderSidebar } from '../features/reader/ReaderSidebar'
 import { ReaderMobileChapters } from '../features/reader/ReaderMobileChapters'
+import { ReaderModeToggle } from '../features/reader/ReaderModeToggle'
+import {
+  ReflowedReadingMode,
+  type ReflowedReadingModeHandle,
+} from '../features/reader/ReflowedReadingMode'
 import { findChapterForPage, sortChapters } from '../features/reader/reader.utils'
 import type { ReaderState } from '../features/reader/reader.types'
 import {
   ReaderPreferencesPanel,
   getReaderThemeClass,
+  type ReaderMode,
   useReaderPreferences,
 } from '../features/reader/preferences'
 
@@ -37,6 +45,13 @@ type PdfState =
   | { status: 'ready'; blobUrl: string }
   | { status: 'error'; message: string }
 
+type ReadingContentState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; data: ReadingContentResponse }
+  | { status: 'unavailable' }
+  | { status: 'error'; message: string }
+
 function reportPdfFailure(stage: string, error: unknown) {
   if (import.meta.env.DEV) {
     console.error(`[Sophia reader] ${stage}`, error)
@@ -46,13 +61,20 @@ function reportPdfFailure(stage: string, error: unknown) {
 export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [readerState, setReaderState] = useState<ReaderState>({ status: 'loading' })
   const [pdfState, setPdfState] = useState<PdfState>({ status: 'idle' })
+  const [pdfLoadRequested, setPdfLoadRequested] = useState(false)
   const [pdfLoadAttempt, setPdfLoadAttempt] = useState(0)
-  const [isFirstPageRendered, setIsFirstPageRendered] = useState(false)
+  const [isPdfPageRendered, setIsPdfPageRendered] = useState(false)
+  const [readingContentState, setReadingContentState] =
+    useState<ReadingContentState>({ status: 'idle' })
+  const [readingContentRequested, setReadingContentRequested] = useState(false)
+  const [readingContentLoadAttempt, setReadingContentLoadAttempt] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [viewerPageCount, setViewerPageCount] = useState<number | null>(null)
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false)
   const viewerRef = useRef<PDFViewerHandle>(null)
+  const reflowedReaderRef = useRef<ReflowedReadingModeHandle>(null)
   const blobUrlRef = useRef<string | null>(null)
+  const pendingPdfPageRef = useRef<number | null>(null)
   const {
     preferences,
     loading: preferencesLoading,
@@ -68,6 +90,18 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
       : preferences.pdfFitMode === 'fit-page'
         ? ZoomMode.FitPage
         : ZoomMode.FitWidth
+
+  useEffect(() => {
+    if (preferencesLoading) {
+      return
+    }
+
+    if (preferences.readerMode === 'pdf') {
+      setPdfLoadRequested(true)
+    } else {
+      setReadingContentRequested(true)
+    }
+  }, [preferences.readerMode, preferencesLoading])
 
   // Load reader data
   useEffect(() => {
@@ -90,6 +124,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         if (isMounted) {
           setReaderState({ status: 'ready', data })
           setCurrentPage(data.book.currentPage)
+          pendingPdfPageRef.current = data.book.currentPage
         }
       } catch (error) {
         if (!isMounted) {
@@ -126,7 +161,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
   // Load the PDF blob once reader data is ready
   useEffect(() => {
-    if (readerState.status !== 'ready') {
+    if (readerState.status !== 'ready' || !pdfLoadRequested) {
       return
     }
 
@@ -136,7 +171,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
     async function loadPdf(data: ReaderDataResponse) {
       setPdfState({ status: 'loading' })
-      setIsFirstPageRendered(false)
+      setIsPdfPageRendered(false)
 
       try {
         const blob = await fetchBookPdfBlob(data.book.pdfUrl, {
@@ -189,7 +224,68 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         }
       }
     }
-  }, [pdfLoadAttempt, readerState, userBookId])
+  }, [pdfLoadAttempt, pdfLoadRequested, readerState, userBookId])
+
+  useEffect(() => {
+    if (readerState.status !== 'ready' || !readingContentRequested) {
+      return
+    }
+
+    let isMounted = true
+    const controller = new AbortController()
+
+    async function loadReadingContent() {
+      setReadingContentState({ status: 'loading' })
+
+      try {
+        const data = await getReadingContent(userBookId, {
+          signal: controller.signal,
+        })
+
+        if (!isMounted) {
+          return
+        }
+
+        const pages = [
+          ...data.unassignedPages,
+          ...data.chapters.flatMap((chapter) => chapter.pages),
+        ]
+        const hasReadableText = pages.some((page) => page.text.trim().length > 0)
+
+        setReadingContentState(
+          hasReadableText ? { status: 'ready', data } : { status: 'unavailable' },
+        )
+      } catch (error) {
+        if (!isMounted) {
+          return
+        }
+
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+
+        if (error instanceof BooksApiError && error.status === 401) {
+          navigate(createReaderLoginRedirect(userBookId), { replace: true })
+          return
+        }
+
+        setReadingContentState({
+          status: 'error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'We could not prepare the reading view right now.',
+        })
+      }
+    }
+
+    void loadReadingContent()
+
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [readingContentLoadAttempt, readingContentRequested, readerState, userBookId])
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -203,45 +299,71 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
   // Callbacks for Extend UI PDFViewer
   const handleActivePageChange = useCallback((pageNumber: number) => {
+    const pendingPage = pendingPdfPageRef.current
+
+    if (pendingPage !== null && pageNumber !== pendingPage) {
+      return
+    }
+
+    if (pageNumber === pendingPage) {
+      pendingPdfPageRef.current = null
+    }
+
     setCurrentPage(pageNumber)
   }, [])
 
-  const handleDocumentLoadSuccess = useCallback((numPages: number) => {
-    setViewerPageCount(numPages)
-  }, [])
+  const handleDocumentLoadSuccess = useCallback(
+    (numPages: number) => {
+      setViewerPageCount(numPages)
+      const targetPage = pendingPdfPageRef.current ?? currentPage
+
+      window.requestAnimationFrame(() => {
+        viewerRef.current?.scrollToPage(targetPage, { behavior: 'auto' })
+        window.requestAnimationFrame(() => {
+          pendingPdfPageRef.current = null
+        })
+      })
+    },
+    [currentPage],
+  )
 
   const handleDocumentLoadError = useCallback((error: Error) => {
     reportPdfFailure('PDF document load failed', error)
-    setIsFirstPageRendered(false)
+    setIsPdfPageRendered(false)
     setPdfState({
       status: 'error',
       message: 'The PDF could not be opened. Please try again.',
     })
   }, [])
 
-  const handlePageRenderSuccess = useCallback((pageNumber: number) => {
-    if (pageNumber === 1) {
-      setIsFirstPageRendered(true)
-    }
+  const handlePageRenderSuccess = useCallback((_pageNumber: number) => {
+    setIsPdfPageRendered(true)
   }, [])
 
   const handlePageRenderError = useCallback((error: Error, pageNumber: number) => {
-    if (pageNumber !== 1) {
+    if (pageNumber !== currentPage) {
       return
     }
 
-    reportPdfFailure('First page render failed', error)
-    setIsFirstPageRendered(false)
+    reportPdfFailure('PDF page render failed', error)
+    setIsPdfPageRendered(false)
     setPdfState({
       status: 'error',
-      message: 'The PDF was loaded, but the first page could not be rendered.',
+      message: 'The PDF was loaded, but the current page could not be rendered.',
     })
-  }, [])
+  }, [currentPage])
 
   // Chapter navigation — scrolls the Extend UI viewer to a page
-  const handleSelectChapter = useCallback((pageStart: number) => {
-    viewerRef.current?.scrollToPage(pageStart)
-  }, [])
+  const handleSelectChapter = useCallback(
+    (pageStart: number) => {
+      if (preferences.readerMode === 'reading') {
+        reflowedReaderRef.current?.scrollToPage(pageStart)
+      } else {
+        viewerRef.current?.scrollToPage(pageStart)
+      }
+    },
+    [preferences.readerMode],
+  )
 
   const toggleChapterDrawer = useCallback(() => {
     setChapterDrawerOpen((prev) => !prev)
@@ -258,11 +380,39 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     [updatePreferences],
   )
 
+  const handleReaderModeChange = useCallback(
+    (mode: ReaderMode) => {
+      if (mode === preferences.readerMode) {
+        return
+      }
+
+      if (mode === 'pdf') {
+        pendingPdfPageRef.current = currentPage
+        setPdfLoadRequested(true)
+        setIsPdfPageRendered(false)
+      } else {
+        setReadingContentRequested(true)
+      }
+
+      updatePreferences({ readerMode: mode })
+    },
+    [currentPage, preferences.readerMode, updatePreferences],
+  )
+
   function handleRetryPdf() {
     setViewerPageCount(null)
-    setIsFirstPageRendered(false)
+    setIsPdfPageRendered(false)
     setPdfState({ status: 'idle' })
     setPdfLoadAttempt((attempt) => attempt + 1)
+  }
+
+  function handleRetryReadingContent() {
+    setReadingContentState({ status: 'idle' })
+    setReadingContentLoadAttempt((attempt) => attempt + 1)
+  }
+
+  function openOriginalPdf() {
+    handleReaderModeChange('pdf')
   }
 
   function goToLibrary() {
@@ -372,6 +522,14 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         }
       />
 
+      <div className="flex shrink-0 justify-center border-b border-sophia-border bg-sophia-surface px-3 py-2">
+        <ReaderModeToggle
+          mode={preferences.readerMode}
+          disabled={preferencesLoading}
+          onChange={handleReaderModeChange}
+        />
+      </div>
+
       {/* Main content area: sidebar + viewer */}
       <div className="flex min-h-0 flex-1">
         {/* Desktop sidebar */}
@@ -381,9 +539,9 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           onSelectChapter={handleSelectChapter}
         />
 
-        {/* PDF viewer area — fills remaining space */}
+        {/* Only the active reading surface is mounted. */}
         <div className="relative min-h-0 min-w-0 flex-1">
-          {pdfState.status === 'loading' || pdfState.status === 'idle' ? (
+          {preferencesLoading ? (
             <div className="grid h-full place-items-center">
               <div className="grid justify-items-center gap-4" role="status">
                 <span
@@ -391,73 +549,154 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
                   aria-hidden="true"
                 />
                 <p className="m-0 text-sm font-semibold text-sophia-text-muted">
-                  Loading the PDF...
+                  Preparing your reading view...
                 </p>
               </div>
             </div>
           ) : null}
 
-          {pdfState.status === 'error' ? (
-            <div className="grid h-full place-items-center px-5 text-center">
-              <div className="grid max-w-[400px] justify-items-center gap-4">
-                <h2 className="m-0 text-lg font-semibold text-sophia-text">
-                  Unable to display this book.
-                </h2>
-                <p className="m-0 text-sm leading-6 text-sophia-text-muted">
-                  {pdfState.message}
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    className="min-h-10 rounded-lg border border-sophia-border px-4 text-sm font-semibold text-sophia-text hover:border-sophia-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
-                    onClick={goToLibrary}
-                  >
-                    Back to library
-                  </button>
-                  <button
-                    type="button"
-                    className="min-h-10 rounded-lg bg-sophia-primary px-4 text-sm font-bold text-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
-                    onClick={handleRetryPdf}
-                  >
-                    Retry
-                  </button>
+          {!preferencesLoading && preferences.readerMode === 'pdf' ? (
+            <>
+              {pdfState.status === 'loading' || pdfState.status === 'idle' ? (
+                <div className="grid h-full place-items-center">
+                  <div className="grid justify-items-center gap-4" role="status">
+                    <span
+                      className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
+                      aria-hidden="true"
+                    />
+                    <p className="m-0 text-sm font-semibold text-sophia-text-muted">
+                      Loading the original PDF...
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ) : null}
+              ) : null}
 
-          {pdfState.status === 'ready' ? (
-            <PDFViewer
-              ref={viewerRef}
-              src={pdfState.blobUrl}
-              defaultZoom={viewerZoom}
-              fileName={book.title}
-              showDownload={false}
-              showUpload={false}
-              showRotateControls={false}
-              onActivePageChange={handleActivePageChange}
-              onDocumentLoadError={handleDocumentLoadError}
-              onDocumentLoadSuccess={handleDocumentLoadSuccess}
-              onPageRenderError={handlePageRenderError}
-              onPageRenderSuccess={handlePageRenderSuccess}
-              onThumbnailSidebarOpenChange={handleThumbnailSidebarOpenChange}
-              thumbnailSidebarOpen={preferences.readerSidebarOpen}
-              className="h-full w-full"
-            />
-          ) : null}
+              {pdfState.status === 'error' ? (
+                <div className="grid h-full place-items-center px-5 text-center">
+                  <div className="grid max-w-[400px] justify-items-center gap-4">
+                    <h2 className="m-0 text-lg font-semibold text-sophia-text">
+                      Unable to display this book.
+                    </h2>
+                    <p className="m-0 text-sm leading-6 text-sophia-text-muted">
+                      {pdfState.message}
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className="min-h-10 rounded-lg border border-sophia-border px-4 text-sm font-semibold text-sophia-text hover:border-sophia-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
+                        onClick={goToLibrary}
+                      >
+                        Back to library
+                      </button>
+                      <button
+                        type="button"
+                        className="min-h-10 rounded-lg bg-sophia-primary px-4 text-sm font-bold text-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
+                        onClick={handleRetryPdf}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
-          {pdfState.status === 'ready' && !isFirstPageRendered ? (
-            <div className="absolute inset-0 z-20 grid place-items-center bg-sophia-bg/95">
-              <div className="grid justify-items-center gap-4" role="status">
-                <span
-                  className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
-                  aria-hidden="true"
+              {pdfState.status === 'ready' ? (
+                <PDFViewer
+                  ref={viewerRef}
+                  src={pdfState.blobUrl}
+                  defaultZoom={viewerZoom}
+                  fileName={book.title}
+                  showDownload={false}
+                  showUpload={false}
+                  showRotateControls={false}
+                  onActivePageChange={handleActivePageChange}
+                  onDocumentLoadError={handleDocumentLoadError}
+                  onDocumentLoadSuccess={handleDocumentLoadSuccess}
+                  onPageRenderError={handlePageRenderError}
+                  onPageRenderSuccess={handlePageRenderSuccess}
+                  onThumbnailSidebarOpenChange={handleThumbnailSidebarOpenChange}
+                  thumbnailSidebarOpen={preferences.readerSidebarOpen}
+                  className="h-full w-full"
                 />
-                <p className="m-0 text-sm font-semibold text-sophia-text-muted">
-                  Rendering the first page...
-                </p>
-              </div>
-            </div>
+              ) : null}
+
+              {pdfState.status === 'ready' && !isPdfPageRendered ? (
+                <div className="absolute inset-0 z-20 grid place-items-center bg-sophia-bg/95">
+                  <div className="grid justify-items-center gap-4" role="status">
+                    <span
+                      className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
+                      aria-hidden="true"
+                    />
+                    <p className="m-0 text-sm font-semibold text-sophia-text-muted">
+                      Rendering the page...
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {!preferencesLoading && preferences.readerMode === 'reading' ? (
+            <>
+              {readingContentState.status === 'loading' ||
+              readingContentState.status === 'idle' ? (
+                <div className="grid h-full place-items-center">
+                  <div className="grid justify-items-center gap-4" role="status">
+                    <span
+                      className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
+                      aria-hidden="true"
+                    />
+                    <p className="m-0 text-sm font-semibold text-sophia-text-muted">
+                      Preparing the reading view...
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
+              {readingContentState.status === 'ready' ? (
+                <ReflowedReadingMode
+                  ref={reflowedReaderRef}
+                  content={readingContentState.data}
+                  initialPage={currentPage}
+                  preferences={preferences}
+                  onActivePageChange={handleActivePageChange}
+                />
+              ) : null}
+
+              {readingContentState.status === 'unavailable' ||
+              readingContentState.status === 'error' ? (
+                <div className="grid h-full place-items-center px-5 text-center" role="alert">
+                  <div className="grid max-w-[440px] justify-items-center gap-4">
+                    <h2 className="m-0 text-xl font-semibold text-sophia-text">
+                      Reading Mode is not available for this book.
+                    </h2>
+                    <p className="m-0 text-sm leading-6 text-sophia-text-muted">
+                      {readingContentState.status === 'error'
+                        ? readingContentState.message
+                        : 'This book does not have extracted text yet. You can continue using the original PDF.'}
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-3">
+                      {readingContentState.status === 'error' ? (
+                        <button
+                          type="button"
+                          className="min-h-10 rounded-lg border border-sophia-border px-4 text-sm font-semibold text-sophia-text hover:border-sophia-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
+                          onClick={handleRetryReadingContent}
+                        >
+                          Retry
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="min-h-10 rounded-lg bg-sophia-primary px-4 text-sm font-bold text-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
+                        onClick={openOriginalPdf}
+                      >
+                        Open Original PDF
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>
