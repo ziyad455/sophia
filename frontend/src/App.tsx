@@ -90,7 +90,7 @@ function App() {
 
     return (
       <ProtectedRoute>
-        <ReaderPage userBookId={userBookId} />
+        <ReaderPage key={userBookId} userBookId={userBookId} />
       </ProtectedRoute>
     )
   }

@@ -1,0 +1,57 @@
+import type { ReflowedReadingPage } from './reader-content.utils'
+import { ReadingParagraph } from './ReadingParagraph'
+
+type ReadingChapterProps = {
+  page: ReflowedReadingPage
+}
+
+export function ReadingChapter({ page }: ReadingChapterProps) {
+  const chapterTitle = page.chapter
+    ? page.chapter.title ?? `Chapter ${page.chapterNumber ?? ''}`.trim()
+    : null
+  const sectionId = page.isChapterStart && page.chapter
+    ? `chapter-${page.chapter.id}`
+    : `reading-page-${page.pageNumber}`
+
+  return (
+    <section
+      id={sectionId}
+      className="scroll-mt-8 border-t border-sophia-border/60 py-8 first:border-t-0 first:pt-0 sm:py-10"
+      data-reading-page={page.pageNumber}
+      data-reading-chapter={page.chapter?.id}
+    >
+      {page.isChapterStart && chapterTitle ? (
+        <header className="mb-8 pt-2 sm:mb-10">
+          <p className="m-0 text-xs font-semibold uppercase text-sophia-text-muted">
+            Chapter {page.chapterNumber}
+          </p>
+          <h2 className="mt-3 text-balance text-3xl font-semibold leading-tight text-sophia-text sm:text-4xl">
+            {chapterTitle}
+          </h2>
+        </header>
+      ) : null}
+
+      <div
+        className="mb-5 text-xs font-semibold uppercase text-sophia-text-muted/80"
+        aria-label={`Source page ${page.pageNumber}`}
+      >
+        Page {page.pageNumber}
+      </div>
+
+      {page.paragraphs.length > 0 ? (
+        page.paragraphs.map((paragraph, index) => (
+          <ReadingParagraph
+            key={`${page.pageNumber}-${index}`}
+            text={paragraph}
+            pageNumber={page.pageNumber}
+            chapterId={page.chapter?.id ?? null}
+          />
+        ))
+      ) : (
+        <p className="m-0 text-sm italic text-sophia-text-muted">
+          This source page contains no extractable text.
+        </p>
+      )}
+    </section>
+  )
+}

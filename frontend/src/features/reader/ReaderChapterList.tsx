@@ -25,10 +25,10 @@ export function ReaderChapterList({
   return (
     <nav aria-label="Book chapters">
       <ul className="m-0 list-none p-0">
-        {chapters.map((chapter) => {
+        {chapters.map((chapter, index) => {
           const isActive = activeChapter?.id === chapter.id
           const pageRange = formatPageRange(chapter)
-          const chapterTitle = chapter.title ?? `Chapter ${chapter.chapterIndex}`
+          const chapterTitle = chapter.title ?? `Chapter ${index + 1}`
           const hasValidPageStart = chapter.pageStart !== null && chapter.pageStart > 0
 
           return (

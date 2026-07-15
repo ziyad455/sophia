@@ -2,14 +2,18 @@ import { config } from '../../../config'
 import { DEFAULT_READER_PREFERENCES } from './reader-preferences.defaults'
 import type {
   PdfFitMode,
+  ReaderMode,
   ReaderPreferences,
   ReaderPreferencesResponse,
   ReaderPreferencesUpdate,
   ReaderTheme,
+  ReadingFontFamily,
 } from './reader-preferences.types'
 
 const readerThemes = new Set<ReaderTheme>(['system', 'light', 'dark'])
+const readerModes = new Set<ReaderMode>(['pdf', 'reading'])
 const pdfFitModes = new Set<PdfFitMode>(['fit-width', 'fit-page', 'custom'])
+const readingFontFamilies = new Set<ReadingFontFamily>(['serif', 'sans'])
 
 export class ReaderPreferencesApiError extends Error {
   readonly status: number
@@ -43,6 +47,9 @@ function normalizePreferences(value: unknown): ReaderPreferences {
   const readerTheme = readerThemes.has(value.readerTheme as ReaderTheme)
     ? (value.readerTheme as ReaderTheme)
     : DEFAULT_READER_PREFERENCES.readerTheme
+  const readerMode = readerModes.has(value.readerMode as ReaderMode)
+    ? (value.readerMode as ReaderMode)
+    : DEFAULT_READER_PREFERENCES.readerMode
   const pdfFitMode = pdfFitModes.has(value.pdfFitMode as PdfFitMode)
     ? (value.pdfFitMode as PdfFitMode)
     : DEFAULT_READER_PREFERENCES.pdfFitMode
@@ -56,12 +63,38 @@ function normalizePreferences(value: unknown): ReaderPreferences {
 
   return {
     readerTheme,
+    readerMode,
     pdfFitMode,
     pdfZoom,
     readerSidebarOpen:
       typeof value.readerSidebarOpen === 'boolean'
         ? value.readerSidebarOpen
         : DEFAULT_READER_PREFERENCES.readerSidebarOpen,
+    readingFontSize:
+      typeof value.readingFontSize === 'number' &&
+      Number.isInteger(value.readingFontSize) &&
+      value.readingFontSize >= 16 &&
+      value.readingFontSize <= 24
+        ? value.readingFontSize
+        : DEFAULT_READER_PREFERENCES.readingFontSize,
+    readingFontFamily: readingFontFamilies.has(
+      value.readingFontFamily as ReadingFontFamily,
+    )
+      ? (value.readingFontFamily as ReadingFontFamily)
+      : DEFAULT_READER_PREFERENCES.readingFontFamily,
+    readingLineHeight:
+      typeof value.readingLineHeight === 'number' &&
+      value.readingLineHeight >= 1.5 &&
+      value.readingLineHeight <= 1.9
+        ? value.readingLineHeight
+        : DEFAULT_READER_PREFERENCES.readingLineHeight,
+    readingContentWidth:
+      typeof value.readingContentWidth === 'number' &&
+      Number.isInteger(value.readingContentWidth) &&
+      value.readingContentWidth >= 640 &&
+      value.readingContentWidth <= 800
+        ? value.readingContentWidth
+        : DEFAULT_READER_PREFERENCES.readingContentWidth,
   }
 }
 

@@ -8,6 +8,7 @@ import {
   getUserLibraryBookCover,
   getUserLibraryBookPdf,
   getUserLibraryBookReaderData,
+  getUserLibraryBookReadingContent,
   listUserLibrary,
   updateUserLibraryBookMetadata,
   uploadPdfBook,
@@ -143,6 +144,17 @@ export async function getLibraryBookReaderData(
   const readerData = await getUserLibraryBookReaderData(userId, userBookId);
 
   res.status(200).json(readerData);
+}
+
+export async function getLibraryBookReadingContent(
+  req: ApiRequest,
+  res: ApiResponse,
+): Promise<void> {
+  const { userId } = requireAuthContext(req);
+  const userBookId = req.params?.userBookId ?? "";
+  const readingContent = await getUserLibraryBookReadingContent(userId, userBookId);
+
+  res.status(200).json(readingContent);
 }
 
 export async function updateLibraryBookMetadata(

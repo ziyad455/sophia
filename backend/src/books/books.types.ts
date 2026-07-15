@@ -40,3 +40,25 @@ export type ReaderData = {
   book: ReaderBook;
   chapters: ReaderChapter[];
 };
+
+export type ReadingContentPage = {
+  pageNumber: number;
+  text: string;
+};
+
+export type ReadingContentChapter = ReaderChapter & {
+  pages: ReadingContentPage[];
+};
+
+export type ReadingContentData = {
+  book: {
+    userBookId: string;
+    bookId: string;
+    title: string;
+    author: string | null;
+    language: string;
+    pageCount: number | null;
+  };
+  chapters: ReadingContentChapter[];
+  unassignedPages: ReadingContentPage[];
+};

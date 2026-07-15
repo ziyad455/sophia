@@ -1,12 +1,25 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { BookProcessingStatus, BookSourceType, UserBookStatus } from "@prisma/client";
+import {
+  BookProcessingStatus,
+  BookSourceType,
+  PageExtractionStatus,
+  UserBookStatus,
+} from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db/prisma";
 import { conflict, notFound } from "../http/errors";
 import type { UpdateBookMetadataDto } from "./books.dto";
-import type { LibraryBook, ReaderChapter, ReaderData, UploadedLibraryBook } from "./books.types";
+import type {
+  LibraryBook,
+  ReaderChapter,
+  ReaderData,
+  ReadingContentChapter,
+  ReadingContentData,
+  ReadingContentPage,
+  UploadedLibraryBook,
+} from "./books.types";
 import { generatePdfCoverThumbnail } from "./covers";
 import type { UploadedPdfFile } from "./upload";
 
@@ -328,6 +341,121 @@ export async function getUserLibraryBookReaderData(
       pdfUrl: `/books/${userBook.id}/pdf`,
     },
     chapters: userBook.book.chapters.map(serializeReaderChapter),
+  };
+}
+
+export async function getUserLibraryBookReadingContent(
+  userId: string,
+  userBookId: string,
+): Promise<ReadingContentData> {
+  if (!uuidPattern.test(userBookId)) {
+    throw notFound("Library entry not found.");
+  }
+
+  const userBook = await prisma.userBook.findFirst({
+    where: {
+      id: userBookId,
+      userId,
+    },
+    select: {
+      id: true,
+      book: {
+        select: {
+          id: true,
+          title: true,
+          author: true,
+          language: true,
+          pageCount: true,
+          processingStatus: true,
+          chapters: {
+            orderBy: {
+              chapterIndex: "asc",
+            },
+            select: {
+              id: true,
+              title: true,
+              chapterIndex: true,
+              pageStart: true,
+              pageEnd: true,
+            },
+          },
+          pages: {
+            where: {
+              extractionStatus: PageExtractionStatus.EXTRACTED,
+            },
+            orderBy: {
+              pageNumber: "asc",
+            },
+            select: {
+              chapterId: true,
+              pageNumber: true,
+              text: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!userBook) {
+    throw notFound("Library entry not found.");
+  }
+
+  if (userBook.book.processingStatus !== BookProcessingStatus.READY) {
+    throw conflict(getReaderStatusConflictMessage(userBook.book.processingStatus));
+  }
+
+  const chapters: ReadingContentChapter[] = userBook.book.chapters.map((chapter) => ({
+    ...serializeReaderChapter(chapter),
+    pages: [],
+  }));
+  const chaptersById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
+  const unassignedPages: ReadingContentPage[] = [];
+
+  for (const page of userBook.book.pages) {
+    const serializedPage: ReadingContentPage = {
+      pageNumber: page.pageNumber,
+      text: page.text ?? "",
+    };
+    const explicitlyAssignedChapter = page.chapterId
+      ? chaptersById.get(page.chapterId)
+      : undefined;
+    const rangeAssignedChapter = explicitlyAssignedChapter
+      ? undefined
+      : chapters.find((chapter, index) => {
+          if (chapter.pageStart === null || page.pageNumber < chapter.pageStart) {
+            return false;
+          }
+
+          const nextChapterStart = chapters[index + 1]?.pageStart;
+          const effectivePageEnd =
+            chapter.pageEnd ??
+            (nextChapterStart === null || nextChapterStart === undefined
+              ? userBook.book.pageCount
+              : nextChapterStart - 1);
+
+          return effectivePageEnd === null || page.pageNumber <= effectivePageEnd;
+        });
+    const chapter = explicitlyAssignedChapter ?? rangeAssignedChapter;
+
+    if (chapter) {
+      chapter.pages.push(serializedPage);
+    } else {
+      unassignedPages.push(serializedPage);
+    }
+  }
+
+  return {
+    book: {
+      userBookId: userBook.id,
+      bookId: userBook.book.id,
+      title: userBook.book.title,
+      author: userBook.book.author,
+      language: userBook.book.language,
+      pageCount: userBook.book.pageCount,
+    },
+    chapters,
+    unassignedPages,
   };
 }
 

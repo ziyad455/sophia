@@ -4,6 +4,7 @@ import type {
   ListBooksResponse,
   ProcessingStatusBook,
   ProcessingStatusResponse,
+  ReadingContentResponse,
   ReaderDataResponse,
   UpdateBookMetadataPayload,
   UpdateBookMetadataResponse,
@@ -29,6 +30,7 @@ export class BooksApiError extends Error {
 }
 
 const READER_DATA_TIMEOUT_MS = 15_000
+const READING_CONTENT_TIMEOUT_MS = 30_000
 const PDF_BLOB_TIMEOUT_MS = 45_000
 
 type RequestAbortSignal = {
@@ -285,6 +287,80 @@ function normalizeReaderDataResponse(value: unknown): ReaderDataResponse {
   }
 }
 
+function normalizeReadingContentPage(value: unknown): ReadingContentResponse['unassignedPages'][number] | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const pageNumber = readNullableNumber(value.pageNumber)
+
+  if (pageNumber === null || !Number.isInteger(pageNumber) || pageNumber < 1) {
+    return null
+  }
+
+  return {
+    pageNumber,
+    text: readString(value.text),
+  }
+}
+
+function normalizeReadingContentResponse(value: unknown): ReadingContentResponse {
+  if (!isRecord(value) || !isRecord(value.book)) {
+    throw new BooksApiError(0, 'We could not prepare the reading view right now.')
+  }
+
+  const userBookId = readString(value.book.userBookId)
+  const bookId = readString(value.book.bookId)
+
+  if (!userBookId || !bookId) {
+    throw new BooksApiError(0, 'We could not prepare the reading view right now.')
+  }
+
+  const chapters = Array.isArray(value.chapters)
+    ? value.chapters
+        .map((rawChapter, index) => {
+          const chapter = normalizeReaderChapter(rawChapter, index)
+
+          if (!chapter || !isRecord(rawChapter)) {
+            return null
+          }
+
+          const pages = Array.isArray(rawChapter.pages)
+            ? rawChapter.pages
+                .map(normalizeReadingContentPage)
+                .filter((page): page is ReadingContentResponse['unassignedPages'][number] =>
+                  Boolean(page),
+                )
+            : []
+
+          return { ...chapter, pages }
+        })
+        .filter((chapter): chapter is ReadingContentResponse['chapters'][number] =>
+          Boolean(chapter),
+        )
+    : []
+  const unassignedPages = Array.isArray(value.unassignedPages)
+    ? value.unassignedPages
+        .map(normalizeReadingContentPage)
+        .filter((page): page is ReadingContentResponse['unassignedPages'][number] =>
+          Boolean(page),
+        )
+    : []
+
+  return {
+    book: {
+      userBookId,
+      bookId,
+      title: readString(value.book.title, 'Untitled book'),
+      author: readNullableString(value.book.author),
+      language: readString(value.book.language, 'en'),
+      pageCount: readNullableNumber(value.book.pageCount),
+    },
+    chapters,
+    unassignedPages,
+  }
+}
+
 function normalizeListBooksResponse(value: unknown): ListBooksResponse {
   if (!isRecord(value) || !Array.isArray(value.books)) {
     return { books: [] }
@@ -514,6 +590,38 @@ export async function getReaderData(userBookId: string): Promise<ReaderDataRespo
   }
 
   return normalizeReaderDataResponse(response)
+}
+
+export async function getReadingContent(
+  userBookId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<ReadingContentResponse> {
+  try {
+    const response = await requestJson<unknown>(`/books/${userBookId}/reading-content`, {
+      signal: options.signal,
+      timeoutMs: READING_CONTENT_TIMEOUT_MS,
+    })
+
+    return normalizeReadingContentResponse(response)
+  } catch (error) {
+    if (!(error instanceof BooksApiError)) {
+      throw error
+    }
+
+    if (error.status === 404) {
+      throw new BooksApiError(404, 'We could not find this book in your library.')
+    }
+
+    if (error.status === 409) {
+      throw new BooksApiError(409, 'This book is not ready to read yet.')
+    }
+
+    if (error.status === 401) {
+      throw new BooksApiError(401, 'Please sign in again before opening this book.')
+    }
+
+    throw new BooksApiError(error.status, 'We could not prepare the reading view right now.')
+  }
 }
 
 export async function fetchBookPdfBlob(
