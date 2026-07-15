@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { navigate } from '../../routing/navigation'
 
 type ReaderHeaderProps = {
@@ -8,6 +9,7 @@ type ReaderHeaderProps = {
   currentChapterTitle: string | null
   hasChapters: boolean
   onToggleChapters: () => void
+  settings?: ReactNode
 }
 
 export function ReaderHeader({
@@ -18,6 +20,7 @@ export function ReaderHeader({
   currentChapterTitle,
   hasChapters,
   onToggleChapters,
+  settings,
 }: ReaderHeaderProps) {
   function goToLibrary() {
     navigate('/library')
@@ -81,6 +84,8 @@ export function ReaderHeader({
       <p className="m-0 hidden shrink-0 text-xs text-sophia-text-muted lg:block">
         {statusText}
       </p>
+
+      {settings}
 
       {/* Chapter toggle for mobile/tablet — only when chapters exist */}
       {hasChapters ? (

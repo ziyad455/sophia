@@ -61,7 +61,12 @@ import {
   ViewportElementContext,
   ViewportPluginPackage,
 } from "@embedpdf/plugin-viewport/react"
-import { useZoom, ZoomPluginPackage } from "@embedpdf/plugin-zoom/react"
+import {
+  ZoomMode,
+  useZoom,
+  ZoomPluginPackage,
+  type ZoomLevel,
+} from "@embedpdf/plugin-zoom/react"
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -133,9 +138,11 @@ export type PDFViewerHandle = {
   getViewportElement: () => HTMLDivElement | null
 }
 
+export type PDFViewerZoomLevel = ZoomLevel
+
 export type PDFViewerProps = {
   className?: string
-  defaultZoom?: number
+  defaultZoom?: PDFViewerZoomLevel
   fileName?: string
   showDownload?: boolean
   showToolbar?: boolean
@@ -150,7 +157,9 @@ export type PDFViewerProps = {
   onDocumentLoadError?: (error: Error) => void
   onPageRenderSuccess?: (pageNumber: number) => void
   onPageRenderError?: (error: Error, pageNumber: number) => void
+  onThumbnailSidebarOpenChange?: (open: boolean) => void
   onPdfUpload?: (file: File) => void
+  thumbnailSidebarOpen?: boolean
   onPagePointerDown?: (
     event: React.PointerEvent<HTMLDivElement>,
     pageNumber: number
@@ -169,8 +178,8 @@ export type PDFViewerProps = {
   ) => void
 }
 
-const DEFAULT_ZOOM = 1
-const ZOOM_OPTIONS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
+const DEFAULT_ZOOM: PDFViewerZoomLevel = ZoomMode.FitWidth
+const ZOOM_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 const PAGE_GAP = 24
 const THUMBNAIL_PAGE_WIDTH = 92
 const THUMBNAIL_IMAGE_PADDING = 8
@@ -1894,7 +1903,7 @@ type PDFViewerInnerProps = {
   pdfFile: string
   documentId: string
   document: PdfDocumentObject | null
-  defaultZoom: number
+  defaultZoom: PDFViewerZoomLevel
   className?: string
   fileName?: string
   showDownload: boolean
@@ -1907,7 +1916,9 @@ type PDFViewerInnerProps = {
   onActivePageChange?: (pageNumber: number) => void
   onPageRenderSuccess?: PDFViewerProps["onPageRenderSuccess"]
   onPageRenderError?: PDFViewerProps["onPageRenderError"]
+  onThumbnailSidebarOpenChange?: PDFViewerProps["onThumbnailSidebarOpenChange"]
   onPdfUpload?: (file: File) => void
+  thumbnailSidebarOpen?: boolean
   onPagePointerDown?: PDFViewerProps["onPagePointerDown"]
   onPagePointerMove?: PDFViewerProps["onPagePointerMove"]
   onPagePointerUp?: PDFViewerProps["onPagePointerUp"]
@@ -1933,7 +1944,9 @@ function PDFViewerInner({
   onActivePageChange,
   onPageRenderSuccess,
   onPageRenderError,
+  onThumbnailSidebarOpenChange,
   onPdfUpload,
+  thumbnailSidebarOpen,
   onPagePointerDown,
   onPagePointerMove,
   onPagePointerUp,
@@ -1945,7 +1958,8 @@ function PDFViewerInner({
   const { state: zoomState, provides: zoom } = useZoom(documentId)
   const { provides: thumbnails } = useThumbnailCapability()
   const { plugin: thumbnailPlugin } = useThumbnailPlugin()
-  const [sidebarOpen, setSidebarOpen] = React.useState(false)
+  const [uncontrolledSidebarOpen, setUncontrolledSidebarOpen] =
+    React.useState(false)
   const [isPreparingDownload, setIsPreparingDownload] = React.useState(false)
   const [pageRotationDeltas, setPageRotationDeltas] =
     React.useState<PageRotationDeltas>(() => new Map())
@@ -1971,9 +1985,21 @@ function PDFViewerInner({
   const isLoading = !pdfDocument
   const controlsDisabled = !numPages
   const downloadDisabled = controlsDisabled || isPreparingDownload
+  const sidebarOpen = thumbnailSidebarOpen ?? uncontrolledSidebarOpen
   const thumbnailSidebarVisible = sidebarOpen && !isLoading
   const currentZoomLevel = zoomState.currentZoomLevel
   const alignedThumbnailSidebarDocumentRef = React.useRef<string | null>(null)
+
+  const handleThumbnailSidebarOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (thumbnailSidebarOpen === undefined) {
+        setUncontrolledSidebarOpen(open)
+      }
+
+      onThumbnailSidebarOpenChange?.(open)
+    },
+    [onThumbnailSidebarOpenChange, thumbnailSidebarOpen]
+  )
 
   React.useEffect(() => {
     pageRotationDeltasRef.current = pageRotationDeltas
@@ -2047,15 +2073,20 @@ function PDFViewerInner({
     return () => window.cancelAnimationFrame(frame)
   }, [activePage, documentId, thumbnailSidebarVisible, thumbnails])
 
-  // The zoom plugin only releases its viewport gate for mode-based zoom
-  // levels (automatic/fit); with a numeric default the gate would never
-  // lift, so apply the initial zoom explicitly once the document loads.
-  const initialZoomDocumentRef = React.useRef<string | null>(null)
+  const appliedZoomRef = React.useRef<{
+    documentId: string
+    level: PDFViewerZoomLevel
+  } | null>(null)
   React.useEffect(() => {
     if (!pdfDocument || !zoom) return
-    if (initialZoomDocumentRef.current === documentId) return
+    if (
+      appliedZoomRef.current?.documentId === documentId &&
+      appliedZoomRef.current.level === defaultZoom
+    ) {
+      return
+    }
 
-    initialZoomDocumentRef.current = documentId
+    appliedZoomRef.current = { documentId, level: defaultZoom }
     zoom.requestZoom(defaultZoom)
   }, [defaultZoom, documentId, pdfDocument, zoom])
 
@@ -2378,7 +2409,7 @@ function PDFViewerInner({
                   size="icon-sm"
                   aria-label="Toggle thumbnails"
                   disabled={controlsDisabled}
-                  onClick={() => setSidebarOpen((open) => !open)}
+                  onClick={() => handleThumbnailSidebarOpenChange(!sidebarOpen)}
                 >
                   <HugeiconsIcon icon={SidebarLeftIcon} className="size-4" />
                 </Button>
@@ -2458,17 +2489,29 @@ function PDFViewerInner({
                   </Button>
                 </ToolbarTooltip>
                 <Select
-                  value={String(currentZoomLevel)}
-                  onValueChange={(value) => zoom?.requestZoom(Number(value))}
+                  value={String(zoomState.zoomLevel)}
+                  onValueChange={(value) =>
+                    zoom?.requestZoom(
+                      value === ZoomMode.FitWidth || value === ZoomMode.FitPage
+                        ? value
+                        : Number(value)
+                    )
+                  }
                   disabled={controlsDisabled}
                   modal={false}
                 >
                   <SelectTrigger size="sm" className="w-[84px] min-w-[84px]">
                     <SelectValue placeholder="Zoom">
-                      {Math.round(currentZoomLevel * 100)}%
+                      {zoomState.zoomLevel === ZoomMode.FitWidth
+                        ? "Fit width"
+                        : zoomState.zoomLevel === ZoomMode.FitPage
+                          ? "Fit page"
+                          : `${Math.round(currentZoomLevel * 100)}%`}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
+                    <SelectItem value={ZoomMode.FitWidth}>Fit width</SelectItem>
+                    <SelectItem value={ZoomMode.FitPage}>Fit page</SelectItem>
                     {ZOOM_OPTIONS.map((option) => (
                       <SelectItem key={option} value={String(option)}>
                         {Math.round(option * 100)}%
@@ -2708,7 +2751,7 @@ function PDFViewerDocumentLoader({
         className={innerProps.className}
         showToolbar={innerProps.showToolbar}
         showUpload={innerProps.showUpload}
-        sidebarOpen={false}
+        sidebarOpen={innerProps.thumbnailSidebarOpen ?? false}
         state={!pdfFile ? "empty" : documentFailed ? "error" : "loading"}
         onUploadFile={(file) => {
           innerProps.onUploadFile(file)
@@ -2748,7 +2791,9 @@ export const PDFViewer = React.forwardRef<PDFViewerHandle, PDFViewerProps>(
       onDocumentLoadError,
       onPageRenderSuccess,
       onPageRenderError,
+      onThumbnailSidebarOpenChange,
       onPdfUpload,
+      thumbnailSidebarOpen,
       onPagePointerDown,
       onPagePointerMove,
       onPagePointerUp,
@@ -2886,7 +2931,9 @@ export const PDFViewer = React.forwardRef<PDFViewerHandle, PDFViewerProps>(
           onDocumentLoadSuccess={onDocumentLoadSuccess}
           onPageRenderSuccess={onPageRenderSuccess}
           onPageRenderError={onPageRenderError}
+          onThumbnailSidebarOpenChange={onThumbnailSidebarOpenChange}
           onPdfUpload={onPdfUpload}
+          thumbnailSidebarOpen={thumbnailSidebarOpen}
           onPagePointerDown={onPagePointerDown}
           onPagePointerMove={onPagePointerMove}
           onPagePointerUp={onPagePointerUp}

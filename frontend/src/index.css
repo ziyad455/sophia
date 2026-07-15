@@ -94,6 +94,77 @@
   --sophia-paper-text: #071019;
 }
 
+:is(.reader-theme-light, .reader-theme-system) {
+  color-scheme: light;
+  --sophia-bg-glow: rgba(150, 124, 70, 0.06);
+  --sophia-bg: #f5f6f7;
+  --sophia-surface: #ffffff;
+  --sophia-text: #202124;
+  --sophia-text-muted: #62666c;
+  --sophia-border: #d9dadd;
+  --sophia-primary: #8a682f;
+  --sophia-accent: #a98749;
+  --sophia-paper: #ffffff;
+  --sophia-paper-text: #202124;
+  --background: oklch(0.985 0.002 247);
+  --foreground: oklch(0.22 0.005 247);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.005 247);
+  --muted: oklch(0.95 0.003 247);
+  --muted-foreground: oklch(0.48 0.008 247);
+  --border: oklch(0.87 0.004 247);
+  --input: oklch(0.87 0.004 247);
+  --ring: oklch(0.56 0.07 80);
+}
+
+.reader-theme-dark {
+  color-scheme: dark;
+  --sophia-bg-glow: rgba(201, 168, 106, 0.08);
+  --sophia-bg: #111315;
+  --sophia-surface: #191c1f;
+  --sophia-text: #f0eee9;
+  --sophia-text-muted: #aaa7a0;
+  --sophia-border: #34383c;
+  --sophia-primary: #c9a86a;
+  --sophia-accent: #a98959;
+  --sophia-paper: #ffffff;
+  --sophia-paper-text: #202124;
+  --background: oklch(0.19 0.006 247);
+  --foreground: oklch(0.94 0.004 80);
+  --popover: oklch(0.23 0.007 247);
+  --popover-foreground: oklch(0.94 0.004 80);
+  --muted: oklch(0.27 0.008 247);
+  --muted-foreground: oklch(0.7 0.008 80);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.7 0.07 80);
+}
+
+@media (prefers-color-scheme: dark) {
+  .reader-theme-system {
+    color-scheme: dark;
+    --sophia-bg-glow: rgba(201, 168, 106, 0.08);
+    --sophia-bg: #111315;
+    --sophia-surface: #191c1f;
+    --sophia-text: #f0eee9;
+    --sophia-text-muted: #aaa7a0;
+    --sophia-border: #34383c;
+    --sophia-primary: #c9a86a;
+    --sophia-accent: #a98959;
+    --sophia-paper: #ffffff;
+    --sophia-paper-text: #202124;
+    --background: oklch(0.19 0.006 247);
+    --foreground: oklch(0.94 0.004 80);
+    --popover: oklch(0.23 0.007 247);
+    --popover-foreground: oklch(0.94 0.004 80);
+    --muted: oklch(0.27 0.008 247);
+    --muted-foreground: oklch(0.7 0.008 80);
+    --border: oklch(1 0 0 / 14%);
+    --input: oklch(1 0 0 / 16%);
+    --ring: oklch(0.7 0.07 80);
+  }
+}
+
 @layer base {
   body {
     background:

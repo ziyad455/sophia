@@ -4,6 +4,7 @@ import { checkDatabaseHealth } from "./db";
 import { createAuthRouter } from "./auth/auth.routes";
 import { createBooksRouter } from "./books/books.routes";
 import { HttpError } from "./http/errors";
+import { createPreferencesRouter } from "./preferences/preferences.routes";
 import { createProcessingRouter } from "./processing/processing.routes";
 
 const express = require("express");
@@ -55,6 +56,7 @@ export function createApp() {
   app.use("/auth", createAuthRouter());
   app.use("/books", createProcessingRouter());
   app.use("/books", createBooksRouter());
+  app.use("/preferences", createPreferencesRouter());
 
   app.get("/health", (_req: Request, res: Response) => {
     res.json({
