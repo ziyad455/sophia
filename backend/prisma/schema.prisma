@@ -209,16 +209,19 @@ model RefreshToken {
 }
 
 model UserPreference {
-  id               String   @id @default(uuid()) @db.Uuid
-  userId           String   @unique @map("user_id") @db.Uuid
-  theme            String   @default("system") @db.VarChar(50)
-  fontSize         Int      @default(18) @map("font_size")
-  fontFamily       String   @default("serif") @map("font_family") @db.VarChar(120)
-  lineHeight       Decimal  @default(1.6) @map("line_height") @db.Decimal(3, 2)
-  explanationDepth String   @default("balanced") @map("explanation_depth") @db.VarChar(50)
-  preferredTone    String   @default("calm") @map("preferred_tone") @db.VarChar(80)
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  theme             String   @default("system") @db.VarChar(50)
+  pdfFitMode        String   @default("fit-width") @map("pdf_fit_mode") @db.VarChar(30)
+  pdfZoom           Int      @default(100) @map("pdf_zoom")
+  readerSidebarOpen Boolean  @default(false) @map("reader_sidebar_open")
+  fontSize          Int      @default(18) @map("font_size")
+  fontFamily        String   @default("serif") @map("font_family") @db.VarChar(120)
+  lineHeight        Decimal  @default(1.6) @map("line_height") @db.Decimal(3, 2)
+  explanationDepth  String   @default("balanced") @map("explanation_depth") @db.VarChar(50)
+  preferredTone     String   @default("calm") @map("preferred_tone") @db.VarChar(80)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ZoomMode } from '@embedpdf/plugin-zoom/react'
 import {
   BooksApiError,
   fetchBookPdfBlob,
@@ -6,12 +7,21 @@ import {
   type ReaderDataResponse,
 } from '../books'
 import { navigate } from '../routing/navigation'
-import { PDFViewer, type PDFViewerHandle } from '../components/ui/pdf-viewer'
+import {
+  PDFViewer,
+  type PDFViewerHandle,
+  type PDFViewerZoomLevel,
+} from '../components/ui/pdf-viewer'
 import { ReaderHeader } from '../features/reader/ReaderHeader'
 import { ReaderSidebar } from '../features/reader/ReaderSidebar'
 import { ReaderMobileChapters } from '../features/reader/ReaderMobileChapters'
 import { findChapterForPage, sortChapters } from '../features/reader/reader.utils'
 import type { ReaderState } from '../features/reader/reader.types'
+import {
+  ReaderPreferencesPanel,
+  getReaderThemeClass,
+  useReaderPreferences,
+} from '../features/reader/preferences'
 
 type ReaderPageProps = {
   userBookId: string
@@ -43,6 +53,21 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false)
   const viewerRef = useRef<PDFViewerHandle>(null)
   const blobUrlRef = useRef<string | null>(null)
+  const {
+    preferences,
+    loading: preferencesLoading,
+    saving: preferencesSaving,
+    error: preferencesError,
+    updatePreferences,
+    resetPreferences,
+  } = useReaderPreferences()
+  const readerThemeClass = getReaderThemeClass(preferences.readerTheme)
+  const viewerZoom: PDFViewerZoomLevel =
+    preferences.pdfFitMode === 'custom'
+      ? preferences.pdfZoom / 100
+      : preferences.pdfFitMode === 'fit-page'
+        ? ZoomMode.FitPage
+        : ZoomMode.FitWidth
 
   // Load reader data
   useEffect(() => {
@@ -226,6 +251,13 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     setChapterDrawerOpen(false)
   }, [])
 
+  const handleThumbnailSidebarOpenChange = useCallback(
+    (open: boolean) => {
+      updatePreferences({ readerSidebarOpen: open })
+    },
+    [updatePreferences],
+  )
+
   function handleRetryPdf() {
     setViewerPageCount(null)
     setIsFirstPageRendered(false)
@@ -240,7 +272,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   // --- Loading state ---
   if (readerState.status === 'loading') {
     return (
-      <main className="flex h-svh flex-col bg-sophia-bg text-sophia-text">
+      <main className={`${readerThemeClass} flex h-svh flex-col bg-sophia-bg text-sophia-text`}>
         <div className="flex h-14 shrink-0 items-center border-b border-sophia-border bg-sophia-surface px-4">
           <p className="m-0 text-sm font-semibold text-sophia-text-muted">Sophia Reader</p>
         </div>
@@ -262,7 +294,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   // --- Error / Not Ready states ---
   if (readerState.status === 'error' || readerState.status === 'not-ready') {
     return (
-      <main className="flex h-svh flex-col bg-sophia-bg text-sophia-text">
+      <main className={`${readerThemeClass} flex h-svh flex-col bg-sophia-bg text-sophia-text`}>
         <div className="flex h-14 shrink-0 items-center border-b border-sophia-border bg-sophia-surface px-4">
           <button
             type="button"
@@ -317,7 +349,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const effectivePageCount = viewerPageCount ?? book.pageCount
 
   return (
-    <main className="flex h-svh flex-col overflow-hidden bg-sophia-bg text-sophia-text">
+    <main className={`${readerThemeClass} flex h-svh flex-col overflow-hidden bg-sophia-bg text-sophia-text`}>
       {/* Reader header */}
       <ReaderHeader
         title={book.title}
@@ -327,6 +359,17 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         currentChapterTitle={activeChapter?.title ?? null}
         hasChapters={hasChapters}
         onToggleChapters={toggleChapterDrawer}
+        settings={
+          <ReaderPreferencesPanel
+            preferences={preferences}
+            loading={preferencesLoading}
+            saving={preferencesSaving}
+            error={preferencesError}
+            themeClassName={readerThemeClass}
+            onChange={updatePreferences}
+            onReset={resetPreferences}
+          />
+        }
       />
 
       {/* Main content area: sidebar + viewer */}
@@ -387,6 +430,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
             <PDFViewer
               ref={viewerRef}
               src={pdfState.blobUrl}
+              defaultZoom={viewerZoom}
               fileName={book.title}
               showDownload={false}
               showUpload={false}
@@ -396,6 +440,8 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
               onDocumentLoadSuccess={handleDocumentLoadSuccess}
               onPageRenderError={handlePageRenderError}
               onPageRenderSuccess={handlePageRenderSuccess}
+              onThumbnailSidebarOpenChange={handleThumbnailSidebarOpenChange}
+              thumbnailSidebarOpen={preferences.readerSidebarOpen}
               className="h-full w-full"
             />
           ) : null}
