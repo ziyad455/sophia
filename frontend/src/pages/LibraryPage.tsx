@@ -92,7 +92,7 @@ function getBookActionLabel(book: LibraryBook, processingPhase?: string): string
     case 'chunking':
       return 'Preparing...'
     case 'ready':
-      return 'Open'
+      return book.progressPercent > 0 ? 'Continue reading' : 'Open'
     case 'failed':
       return 'Retry Processing'
     default:
@@ -261,6 +261,12 @@ function BookCard({
             {book.pageCount ? <span>{book.pageCount} pages</span> : null}
           </div>
           <span>{processingPhase ?? status.description}</span>
+          {book.progressPercent > 0 ? (
+            <span>
+              {Math.round(book.progressPercent)}% read
+              {book.pageCount ? ` · Page ${book.currentPage} of ${book.pageCount}` : ''}
+            </span>
+          ) : null}
           <span>Added {formatDate(book.addedAt)}</span>
         </div>
 
@@ -280,6 +286,7 @@ function BookCard({
             type="button"
             disabled={!actionEnabled}
             onClick={handlePrimaryAction}
+            aria-label={`${actionLabel}: ${book.title}`}
           >
             {actionLabel}
           </button>

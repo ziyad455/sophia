@@ -2,8 +2,9 @@ import { createReadStream } from "node:fs";
 import { requireAuthContext } from "../auth/ownership";
 import { config } from "../config";
 import type { ApiRequest, ApiResponse } from "../http/types";
-import { parseUpdateBookMetadataDto } from "./books.dto";
+import { parseUpdateBookMetadataDto, parseUpdateReadingProgressDto } from "./books.dto";
 import {
+  getUserBookReadingProgress,
   getUserLibraryBook,
   getUserLibraryBookCover,
   getUserLibraryBookPdf,
@@ -11,6 +12,7 @@ import {
   getUserLibraryBookReadingContent,
   listUserLibrary,
   updateUserLibraryBookMetadata,
+  upsertUserBookReadingProgress,
   uploadPdfBook,
 } from "./books.service";
 import { parsePdfUpload } from "./upload";
@@ -155,6 +157,29 @@ export async function getLibraryBookReadingContent(
   const readingContent = await getUserLibraryBookReadingContent(userId, userBookId);
 
   res.status(200).json(readingContent);
+}
+
+export async function getLibraryBookReadingProgress(
+  req: ApiRequest,
+  res: ApiResponse,
+): Promise<void> {
+  const { userId } = requireAuthContext(req);
+  const userBookId = req.params?.userBookId ?? "";
+  const progress = await getUserBookReadingProgress(userId, userBookId);
+
+  res.status(200).json({ progress });
+}
+
+export async function updateLibraryBookReadingProgress(
+  req: ApiRequest,
+  res: ApiResponse,
+): Promise<void> {
+  const { userId } = requireAuthContext(req);
+  const userBookId = req.params?.userBookId ?? "";
+  const dto = parseUpdateReadingProgressDto(req.body);
+  const progress = await upsertUserBookReadingProgress(userId, userBookId, dto);
+
+  res.status(200).json({ progress });
 }
 
 export async function updateLibraryBookMetadata(

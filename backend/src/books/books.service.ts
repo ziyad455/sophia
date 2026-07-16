@@ -9,8 +9,8 @@ import {
 } from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db/prisma";
-import { conflict, notFound } from "../http/errors";
-import type { UpdateBookMetadataDto } from "./books.dto";
+import { badRequest, conflict, notFound } from "../http/errors";
+import type { UpdateBookMetadataDto, UpdateReadingProgressDto } from "./books.dto";
 import type {
   LibraryBook,
   ReaderChapter,
@@ -18,6 +18,7 @@ import type {
   ReadingContentChapter,
   ReadingContentData,
   ReadingContentPage,
+  ReadingProgressData,
   UploadedLibraryBook,
 } from "./books.types";
 import { generatePdfCoverThumbnail } from "./covers";
@@ -28,6 +29,10 @@ type UserBookWithBook = {
   status: UserBookStatus;
   addedAt: Date;
   lastOpenedAt: Date | null;
+  readingProgress?: {
+    currentPage: number;
+    progressPercent: { toNumber(): number };
+  } | null;
   book: {
     id: string;
     title: string;
@@ -65,6 +70,51 @@ function serializeStatus(value: string): string {
   return value.toLowerCase();
 }
 
+function clampProgressPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(value * 10) / 10));
+}
+
+function calculateProgressPercent(currentPage: number, pageCount: number | null): number {
+  if (!pageCount || pageCount < 1) {
+    return 0;
+  }
+
+  return clampProgressPercent((currentPage / pageCount) * 100);
+}
+
+function findChapterIdForPage(
+  chapters: Array<{
+    id: string;
+    pageStart: number | null;
+    pageEnd: number | null;
+  }>,
+  currentPage: number,
+  pageCount: number | null,
+): string | null {
+  for (const [index, chapter] of chapters.entries()) {
+    if (chapter.pageStart === null || currentPage < chapter.pageStart) {
+      continue;
+    }
+
+    const nextChapterStart = chapters[index + 1]?.pageStart;
+    const effectivePageEnd =
+      chapter.pageEnd ??
+      (nextChapterStart === null || nextChapterStart === undefined
+        ? pageCount
+        : nextChapterStart - 1);
+
+    if (effectivePageEnd === null || currentPage <= effectivePageEnd) {
+      return chapter.id;
+    }
+  }
+
+  return null;
+}
+
 function serializeReaderChapter(chapter: {
   id: string;
   title: string | null;
@@ -94,6 +144,10 @@ function serializeLibraryBook(userBook: UserBookWithBook): LibraryBook {
     pageCount: userBook.book.pageCount,
     addedAt: userBook.addedAt.toISOString(),
     lastOpenedAt: userBook.lastOpenedAt?.toISOString() ?? null,
+    currentPage: userBook.readingProgress?.currentPage ?? 1,
+    progressPercent: clampProgressPercent(
+      userBook.readingProgress?.progressPercent.toNumber() ?? 0,
+    ),
     coverUrl: userBook.book.coverPath ? `/books/${userBook.id}/cover` : null,
   };
 }
@@ -187,6 +241,12 @@ export async function listUserLibrary(userId: string): Promise<LibraryBook[]> {
       addedAt: "desc",
     },
     include: {
+      readingProgress: {
+        select: {
+          currentPage: true,
+          progressPercent: true,
+        },
+      },
       book: {
         select: {
           id: true,
@@ -219,6 +279,12 @@ export async function getUserLibraryBook(userId: string, userBookId: string): Pr
       userId,
     },
     include: {
+      readingProgress: {
+        select: {
+          currentPage: true,
+          progressPercent: true,
+        },
+      },
       book: {
         select: {
           id: true,
@@ -325,6 +391,15 @@ export async function getUserLibraryBookReaderData(
     throw conflict(getReaderStatusConflictMessage(userBook.book.processingStatus));
   }
 
+  await prisma.userBook.update({
+    where: {
+      id: userBook.id,
+    },
+    data: {
+      lastOpenedAt: new Date(),
+    },
+  });
+
   return {
     book: {
       userBookId: userBook.id,
@@ -341,6 +416,198 @@ export async function getUserLibraryBookReaderData(
       pdfUrl: `/books/${userBook.id}/pdf`,
     },
     chapters: userBook.book.chapters.map(serializeReaderChapter),
+  };
+}
+
+export async function getUserBookReadingProgress(
+  userId: string,
+  userBookId: string,
+): Promise<ReadingProgressData> {
+  if (!uuidPattern.test(userBookId)) {
+    throw notFound("Library entry not found.");
+  }
+
+  const userBook = await prisma.userBook.findFirst({
+    where: {
+      id: userBookId,
+      userId,
+    },
+    select: {
+      id: true,
+      readingProgress: {
+        select: {
+          currentPage: true,
+          progressPercent: true,
+          lastReadAt: true,
+          updatedAt: true,
+        },
+      },
+      book: {
+        select: {
+          pageCount: true,
+          chapters: {
+            orderBy: {
+              chapterIndex: "asc",
+            },
+            select: {
+              id: true,
+              pageStart: true,
+              pageEnd: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!userBook) {
+    throw notFound("Library entry not found.");
+  }
+
+  const storedProgress = userBook.readingProgress;
+
+  if (!storedProgress) {
+    return {
+      userBookId: userBook.id,
+      currentPage: 1,
+      currentChapterId: null,
+      progressPercent: 0,
+      lastReadAt: null,
+      updatedAt: null,
+    };
+  }
+
+  const maximumPage = userBook.book.pageCount && userBook.book.pageCount > 0
+    ? userBook.book.pageCount
+    : null;
+  const currentPage = maximumPage
+    ? Math.min(maximumPage, Math.max(1, storedProgress.currentPage))
+    : Math.max(1, storedProgress.currentPage);
+  const currentChapterId = findChapterIdForPage(
+    userBook.book.chapters,
+    currentPage,
+    maximumPage,
+  );
+  const progressPercent = maximumPage
+    ? calculateProgressPercent(currentPage, maximumPage)
+    : clampProgressPercent(storedProgress.progressPercent.toNumber());
+
+  return {
+    userBookId: userBook.id,
+    currentPage,
+    currentChapterId,
+    progressPercent,
+    lastReadAt: storedProgress.lastReadAt?.toISOString() ?? null,
+    updatedAt: storedProgress.updatedAt.toISOString(),
+  };
+}
+
+export async function upsertUserBookReadingProgress(
+  userId: string,
+  userBookId: string,
+  dto: UpdateReadingProgressDto,
+): Promise<ReadingProgressData> {
+  if (!uuidPattern.test(userBookId)) {
+    throw notFound("Library entry not found.");
+  }
+
+  const userBook = await prisma.userBook.findFirst({
+    where: {
+      id: userBookId,
+      userId,
+    },
+    select: {
+      id: true,
+      bookId: true,
+      readingProgress: {
+        select: {
+          currentPage: true,
+          progressPercent: true,
+        },
+      },
+      book: {
+        select: {
+          pageCount: true,
+          chapters: {
+            orderBy: {
+              chapterIndex: "asc",
+            },
+            select: {
+              id: true,
+              pageStart: true,
+              pageEnd: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!userBook) {
+    throw notFound("Library entry not found.");
+  }
+
+  if (
+    dto.currentChapterId &&
+    !userBook.book.chapters.some((chapter) => chapter.id === dto.currentChapterId)
+  ) {
+    throw badRequest("currentChapterId does not belong to this book.");
+  }
+
+  const currentPage = dto.currentPage ?? userBook.readingProgress?.currentPage ?? 1;
+  const pageCount = userBook.book.pageCount;
+
+  if (pageCount && currentPage > pageCount) {
+    throw badRequest(`currentPage must not exceed this book's ${pageCount} pages.`);
+  }
+
+  const currentChapterId = findChapterIdForPage(
+    userBook.book.chapters,
+    currentPage,
+    pageCount,
+  );
+  const progressPercent = pageCount
+    ? calculateProgressPercent(currentPage, pageCount)
+    : clampProgressPercent(
+        dto.progressPercent ?? userBook.readingProgress?.progressPercent.toNumber() ?? 0,
+      );
+  const now = new Date();
+  const progress = await prisma.readingProgress.upsert({
+    where: {
+      userBookId: userBook.id,
+    },
+    create: {
+      userId,
+      userBookId: userBook.id,
+      bookId: userBook.bookId,
+      currentPage,
+      currentChapterId,
+      progressPercent,
+      lastReadAt: now,
+    },
+    update: {
+      currentPage,
+      currentChapterId,
+      progressPercent,
+      lastReadAt: now,
+    },
+    select: {
+      userBookId: true,
+      currentPage: true,
+      currentChapterId: true,
+      progressPercent: true,
+      lastReadAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return {
+    userBookId: progress.userBookId,
+    currentPage: progress.currentPage,
+    currentChapterId: progress.currentChapterId,
+    progressPercent: clampProgressPercent(progress.progressPercent.toNumber()),
+    lastReadAt: progress.lastReadAt?.toISOString() ?? null,
+    updatedAt: progress.updatedAt.toISOString(),
   };
 }
 
@@ -496,6 +763,12 @@ export async function updateUserLibraryBookMetadata(
         userId,
       },
       include: {
+        readingProgress: {
+          select: {
+            currentPage: true,
+            progressPercent: true,
+          },
+        },
         book: {
           select: {
             id: true,

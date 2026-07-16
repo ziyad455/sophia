@@ -10,6 +10,8 @@ export type LibraryBook = {
   pageCount: number | null;
   addedAt: string;
   lastOpenedAt: string | null;
+  currentPage: number;
+  progressPercent: number;
   coverUrl: string | null;
 };
 
@@ -61,4 +63,13 @@ export type ReadingContentData = {
   };
   chapters: ReadingContentChapter[];
   unassignedPages: ReadingContentPage[];
+};
+
+export type ReadingProgressData = {
+  userBookId: string;
+  currentPage: number;
+  currentChapterId: string | null;
+  progressPercent: number;
+  lastReadAt: string | null;
+  updatedAt: string | null;
 };

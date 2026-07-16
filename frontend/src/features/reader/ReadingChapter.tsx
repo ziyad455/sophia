@@ -19,6 +19,8 @@ export function ReadingChapter({ page }: ReadingChapterProps) {
       className="scroll-mt-8 border-t border-sophia-border/60 py-8 first:border-t-0 first:pt-0 sm:py-10"
       data-reading-page={page.pageNumber}
       data-reading-chapter={page.chapter?.id}
+      data-page-number={page.pageNumber}
+      data-chapter-id={page.chapter?.id}
     >
       {page.isChapterStart && chapterTitle ? (
         <header className="mb-8 pt-2 sm:mb-10">
