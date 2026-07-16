@@ -11,6 +11,8 @@ export type LibraryBook = {
   pageCount: number | null
   addedAt: string
   lastOpenedAt: string | null
+  currentPage: number
+  progressPercent: number
   coverUrl: string | null
 }
 
@@ -87,6 +89,25 @@ export type ReadingContentResponse = {
   }
   chapters: ReadingContentChapter[]
   unassignedPages: ReadingContentPage[]
+}
+
+export type ReadingProgress = {
+  userBookId: string
+  currentPage: number
+  currentChapterId: string | null
+  progressPercent: number
+  lastReadAt: string | null
+  updatedAt: string | null
+}
+
+export type ReadingProgressResponse = {
+  progress: ReadingProgress
+}
+
+export type UpdateReadingProgressPayload = {
+  currentPage?: number
+  currentChapterId?: string | null
+  progressPercent?: number
 }
 
 export type ProcessingStatusBook = {

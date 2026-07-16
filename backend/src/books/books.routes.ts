@@ -6,8 +6,10 @@ import {
   getLibraryBookPdf,
   getLibraryBookReaderData,
   getLibraryBookReadingContent,
+  getLibraryBookReadingProgress,
   listLibrary,
   updateLibraryBookMetadata,
+  updateLibraryBookReadingProgress,
   uploadBook,
 } from "./books.controller";
 
@@ -23,6 +25,16 @@ export function createBooksRouter() {
     "/:userBookId/reading-content",
     requireAuth,
     asyncHandler(getLibraryBookReadingContent),
+  );
+  router.get(
+    "/:userBookId/progress",
+    requireAuth,
+    asyncHandler(getLibraryBookReadingProgress),
+  );
+  router.patch(
+    "/:userBookId/progress",
+    requireAuth,
+    asyncHandler(updateLibraryBookReadingProgress),
   );
   router.get("/:userBookId/pdf", requireAuth, asyncHandler(getLibraryBookPdf));
   router.get("/:userBookId/cover", requireAuth, asyncHandler(getLibraryBookCover));

@@ -34,17 +34,37 @@ export const ReflowedReadingMode = forwardRef<
   ref,
 ) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const frameRef = useRef<number | null>(null)
   const didSetInitialPageRef = useRef(false)
+  const onActivePageChangeRef = useRef(onActivePageChange)
   const pages = useMemo(() => buildReflowedReadingPages(content), [content])
+
+  useEffect(() => {
+    onActivePageChangeRef.current = onActivePageChange
+  }, [onActivePageChange])
 
   const scrollToPage = useCallback((pageNumber: number, behavior?: ScrollBehavior) => {
     const container = scrollContainerRef.current
-    const page = container?.querySelector<HTMLElement>(
-      `[data-reading-page="${pageNumber}"]`,
+    const exactPage = container?.querySelector<HTMLElement>(
+      `[data-page-number="${pageNumber}"]`,
     )
 
-    if (!container || !page) {
+    if (!container) {
+      return
+    }
+
+    const page = exactPage ?? [...container.querySelectorAll<HTMLElement>('[data-page-number]')]
+      .reduce<HTMLElement | null>((nearest, candidate) => {
+        if (!nearest) {
+          return candidate
+        }
+
+        const nearestDistance = Math.abs(Number(nearest.dataset.pageNumber) - pageNumber)
+        const candidateDistance = Math.abs(Number(candidate.dataset.pageNumber) - pageNumber)
+
+        return candidateDistance < nearestDistance ? candidate : nearest
+      }, null)
+
+    if (!page) {
       return
     }
 
@@ -80,47 +100,57 @@ export const ReflowedReadingMode = forwardRef<
       return
     }
 
-    const activeContainer = container
-
-    function updateActivePage() {
-      frameRef.current = null
-      const pageElements = activeContainer.querySelectorAll<HTMLElement>('[data-reading-page]')
-      const readingLine = activeContainer.getBoundingClientRect().top + 96
-      let activePage = pages[0].pageNumber
-
-      for (const element of pageElements) {
-        const pageNumber = Number(element.dataset.readingPage)
-
-        if (element.getBoundingClientRect().top <= readingLine) {
-          activePage = pageNumber
-        } else {
-          break
+    const pageElements = container.querySelectorAll<HTMLElement>('[data-page-number]')
+    const visiblePages = new Map<Element, IntersectionObserverEntry>()
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            visiblePages.set(entry.target, entry)
+          } else {
+            visiblePages.delete(entry.target)
+          }
         }
-      }
 
-      onActivePageChange(activePage)
-    }
+        const visibleEntries = [...visiblePages.values()]
 
-    function scheduleActivePageUpdate() {
-      if (frameRef.current === null) {
-        frameRef.current = window.requestAnimationFrame(updateActivePage)
-      }
-    }
+        if (visibleEntries.length === 0) {
+          return
+        }
 
-    scheduleActivePageUpdate()
-    activeContainer.addEventListener('scroll', scheduleActivePageUpdate, { passive: true })
-    window.addEventListener('resize', scheduleActivePageUpdate)
+        const readingLine = (visibleEntries[0].rootBounds?.top ?? 0) + 96
+        const nearestEntry = visibleEntries.reduce((mostVisible, entry) => {
+          const visibleHeightDifference =
+            entry.intersectionRect.height - mostVisible.intersectionRect.height
+
+          if (Math.abs(visibleHeightDifference) > 1) {
+            return visibleHeightDifference > 0 ? entry : mostVisible
+          }
+
+          const mostVisibleDistance = Math.abs(mostVisible.boundingClientRect.top - readingLine)
+          const entryDistance = Math.abs(entry.boundingClientRect.top - readingLine)
+
+          return entryDistance < mostVisibleDistance ? entry : mostVisible
+        })
+        const pageNumber = Number((nearestEntry.target as HTMLElement).dataset.pageNumber)
+
+        if (Number.isInteger(pageNumber) && pageNumber > 0) {
+          onActivePageChangeRef.current(pageNumber)
+        }
+      },
+      {
+        root: container,
+        threshold: [0, 0.01, 0.25, 0.5, 0.75, 1],
+      },
+    )
+
+    pageElements.forEach((element) => observer.observe(element))
 
     return () => {
-      activeContainer.removeEventListener('scroll', scheduleActivePageUpdate)
-      window.removeEventListener('resize', scheduleActivePageUpdate)
-
-      if (frameRef.current !== null) {
-        window.cancelAnimationFrame(frameRef.current)
-        frameRef.current = null
-      }
+      observer.disconnect()
+      visiblePages.clear()
     }
-  }, [onActivePageChange, pages])
+  }, [pages])
 
   const articleStyle: CSSProperties = {
     fontFamily:

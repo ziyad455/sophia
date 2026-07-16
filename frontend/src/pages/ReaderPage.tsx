@@ -6,7 +6,9 @@ import {
   getReadingContent,
   getReaderData,
   type ReadingContentResponse,
+  type ReaderChapter,
   type ReaderDataResponse,
+  type UpdateReadingProgressPayload,
 } from '../books'
 import { navigate } from '../routing/navigation'
 import {
@@ -24,6 +26,7 @@ import {
 } from '../features/reader/ReflowedReadingMode'
 import { findChapterForPage, sortChapters } from '../features/reader/reader.utils'
 import type { ReaderState } from '../features/reader/reader.types'
+import { useReadingProgress } from '../features/reader/use-reading-progress'
 import {
   ReaderPreferencesPanel,
   getReaderThemeClass,
@@ -58,6 +61,30 @@ function reportPdfFailure(stage: string, error: unknown) {
   }
 }
 
+function clampReaderPage(pageNumber: number, pageCount: number | null): number {
+  const safePage = Number.isInteger(pageNumber) ? Math.max(1, pageNumber) : 1
+
+  return pageCount && pageCount > 0 ? Math.min(safePage, pageCount) : safePage
+}
+
+function createProgressPayload(
+  pageNumber: number,
+  pageCount: number | null,
+  chapters: ReaderChapter[],
+): UpdateReadingProgressPayload {
+  const currentPage = clampReaderPage(pageNumber, pageCount)
+  const currentChapter = findChapterForPage(sortChapters(chapters), currentPage)
+  const progressPercent = pageCount && pageCount > 0
+    ? Math.min(100, Math.max(0, Math.round((currentPage / pageCount) * 1_000) / 10))
+    : 0
+
+  return {
+    currentPage,
+    currentChapterId: currentChapter?.id ?? null,
+    progressPercent,
+  }
+}
+
 export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [readerState, setReaderState] = useState<ReaderState>({ status: 'loading' })
   const [pdfState, setPdfState] = useState<PdfState>({ status: 'idle' })
@@ -75,6 +102,10 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const reflowedReaderRef = useRef<ReflowedReadingModeHandle>(null)
   const blobUrlRef = useRef<string | null>(null)
   const pendingPdfPageRef = useRef<number | null>(null)
+  const currentPageRef = useRef(1)
+  const pageChangeVersionRef = useRef(0)
+  const progressAppliedRef = useRef(false)
+  const progressReadyToSaveRef = useRef(false)
   const {
     preferences,
     loading: preferencesLoading,
@@ -83,6 +114,15 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     updatePreferences,
     resetPreferences,
   } = useReaderPreferences()
+  const {
+    loadState: progressLoadState,
+    queueSave: queueProgressSave,
+    flush: flushProgress,
+    saveError: progressSaveError,
+  } = useReadingProgress({
+    enabled: readerState.status === 'ready',
+    userBookId,
+  })
   const readerThemeClass = getReaderThemeClass(preferences.readerTheme)
   const viewerZoom: PDFViewerZoomLevel =
     preferences.pdfFitMode === 'custom'
@@ -123,8 +163,11 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
         if (isMounted) {
           setReaderState({ status: 'ready', data })
-          setCurrentPage(data.book.currentPage)
-          pendingPdfPageRef.current = data.book.currentPage
+          const initialPage = clampReaderPage(data.book.currentPage, data.book.pageCount)
+
+          currentPageRef.current = initialPage
+          setCurrentPage(initialPage)
+          pendingPdfPageRef.current = initialPage
         }
       } catch (error) {
         if (!isMounted) {
@@ -287,6 +330,37 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     }
   }, [readingContentLoadAttempt, readingContentRequested, readerState, userBookId])
 
+  useEffect(() => {
+    if (
+      readerState.status !== 'ready' ||
+      progressAppliedRef.current ||
+      progressLoadState.status === 'loading'
+    ) {
+      return
+    }
+
+    progressAppliedRef.current = true
+
+    if (progressLoadState.status === 'ready' && pageChangeVersionRef.current === 0) {
+      const restoredPage = clampReaderPage(
+        progressLoadState.progress.currentPage,
+        readerState.data.book.pageCount,
+      )
+
+      currentPageRef.current = restoredPage
+      setCurrentPage(restoredPage)
+
+      if (preferences.readerMode === 'pdf') {
+        pendingPdfPageRef.current = restoredPage
+        viewerRef.current?.scrollToPage(restoredPage, { behavior: 'auto' })
+      } else {
+        reflowedReaderRef.current?.scrollToPage(restoredPage, 'auto')
+      }
+    }
+
+    progressReadyToSaveRef.current = true
+  }, [preferences.readerMode, progressLoadState, readerState])
+
   // Cleanup blob URL on unmount
   useEffect(() => {
     return () => {
@@ -298,19 +372,47 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   }, [])
 
   // Callbacks for Extend UI PDFViewer
+  const queueCurrentProgress = useCallback(
+    (pageNumber: number) => {
+      if (readerState.status !== 'ready') {
+        return
+      }
+
+      queueProgressSave(
+        createProgressPayload(
+          pageNumber,
+          viewerPageCount ?? readerState.data.book.pageCount,
+          readerState.data.chapters,
+        ),
+      )
+    },
+    [queueProgressSave, readerState, viewerPageCount],
+  )
+
   const handleActivePageChange = useCallback((pageNumber: number) => {
+    const normalizedPage = Math.max(1, Math.trunc(pageNumber))
     const pendingPage = pendingPdfPageRef.current
 
-    if (pendingPage !== null && pageNumber !== pendingPage) {
+    if (pendingPage !== null && normalizedPage !== pendingPage) {
       return
     }
 
-    if (pageNumber === pendingPage) {
+    if (normalizedPage === pendingPage) {
       pendingPdfPageRef.current = null
     }
 
-    setCurrentPage(pageNumber)
-  }, [])
+    if (normalizedPage === currentPageRef.current) {
+      return
+    }
+
+    currentPageRef.current = normalizedPage
+    pageChangeVersionRef.current += 1
+    setCurrentPage(normalizedPage)
+
+    if (progressReadyToSaveRef.current) {
+      queueCurrentProgress(normalizedPage)
+    }
+  }, [queueCurrentProgress])
 
   const handleDocumentLoadSuccess = useCallback(
     (numPages: number) => {
@@ -386,17 +488,23 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         return
       }
 
+      if (progressReadyToSaveRef.current) {
+        queueCurrentProgress(currentPageRef.current)
+        void flushProgress()
+      }
+
       if (mode === 'pdf') {
-        pendingPdfPageRef.current = currentPage
+        pendingPdfPageRef.current = currentPageRef.current
         setPdfLoadRequested(true)
         setIsPdfPageRendered(false)
       } else {
+        pendingPdfPageRef.current = currentPageRef.current
         setReadingContentRequested(true)
       }
 
       updatePreferences({ readerMode: mode })
     },
-    [currentPage, preferences.readerMode, updatePreferences],
+    [flushProgress, preferences.readerMode, queueCurrentProgress, updatePreferences],
   )
 
   function handleRetryPdf() {
@@ -416,6 +524,11 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   }
 
   function goToLibrary() {
+    if (progressReadyToSaveRef.current) {
+      queueCurrentProgress(currentPageRef.current)
+      void flushProgress()
+    }
+
     navigate('/library')
   }
 
@@ -529,6 +642,15 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           onChange={handleReaderModeChange}
         />
       </div>
+
+      {progressLoadState.status === 'error' || progressSaveError ? (
+        <p
+          className="m-0 shrink-0 border-b border-sophia-border bg-sophia-surface px-4 py-2 text-center text-xs text-sophia-text-muted"
+          role="status"
+        >
+          {progressSaveError ?? 'Your saved position could not be restored. Reading starts here.'}
+        </p>
+      ) : null}
 
       {/* Main content area: sidebar + viewer */}
       <div className="flex min-h-0 flex-1">

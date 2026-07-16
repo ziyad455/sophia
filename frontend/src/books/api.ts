@@ -5,9 +5,11 @@ import type {
   ProcessingStatusBook,
   ProcessingStatusResponse,
   ReadingContentResponse,
+  ReadingProgressResponse,
   ReaderDataResponse,
   UpdateBookMetadataPayload,
   UpdateBookMetadataResponse,
+  UpdateReadingProgressPayload,
   UploadBookPayload,
   UploadBookResponse,
 } from './types'
@@ -31,6 +33,7 @@ export class BooksApiError extends Error {
 
 const READER_DATA_TIMEOUT_MS = 15_000
 const READING_CONTENT_TIMEOUT_MS = 30_000
+const READING_PROGRESS_TIMEOUT_MS = 10_000
 const PDF_BLOB_TIMEOUT_MS = 45_000
 
 type RequestAbortSignal = {
@@ -152,6 +155,8 @@ function normalizeBook(value: unknown, index: number): LibraryBook | null {
     pageCount: readNullableNumber(value.pageCount),
     addedAt: readString(value.addedAt, new Date().toISOString()),
     lastOpenedAt: readNullableString(value.lastOpenedAt),
+    currentPage: readNullableNumber(value.currentPage) ?? 1,
+    progressPercent: readNullableNumber(value.progressPercent) ?? 0,
     coverUrl,
   }
 }
@@ -358,6 +363,38 @@ function normalizeReadingContentResponse(value: unknown): ReadingContentResponse
     },
     chapters,
     unassignedPages,
+  }
+}
+
+function normalizeReadingProgressResponse(value: unknown): ReadingProgressResponse {
+  if (!isRecord(value) || !isRecord(value.progress)) {
+    throw new BooksApiError(0, 'We could not read your saved position right now.')
+  }
+
+  const progress = value.progress
+  const userBookId = readString(progress.userBookId)
+  const currentPage = readNullableNumber(progress.currentPage)
+  const progressPercent = readNullableNumber(progress.progressPercent)
+
+  if (
+    !userBookId ||
+    currentPage === null ||
+    !Number.isInteger(currentPage) ||
+    currentPage < 1 ||
+    progressPercent === null
+  ) {
+    throw new BooksApiError(0, 'We could not read your saved position right now.')
+  }
+
+  return {
+    progress: {
+      userBookId,
+      currentPage,
+      currentChapterId: readNullableString(progress.currentChapterId),
+      progressPercent: Math.min(100, Math.max(0, progressPercent)),
+      lastReadAt: readNullableString(progress.lastReadAt),
+      updatedAt: readNullableString(progress.updatedAt),
+    },
   }
 }
 
@@ -621,6 +658,57 @@ export async function getReadingContent(
     }
 
     throw new BooksApiError(error.status, 'We could not prepare the reading view right now.')
+  }
+}
+
+export async function getReadingProgress(
+  userBookId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<ReadingProgressResponse> {
+  try {
+    const response = await requestJson<unknown>(`/books/${userBookId}/progress`, {
+      signal: options.signal,
+      timeoutMs: READING_PROGRESS_TIMEOUT_MS,
+    })
+
+    return normalizeReadingProgressResponse(response)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error
+    }
+
+    if (error instanceof BooksApiError && error.status === 404) {
+      throw new BooksApiError(404, 'We could not find this book in your library.')
+    }
+
+    throw new BooksApiError(
+      error instanceof BooksApiError ? error.status : 0,
+      'We could not restore your saved reading position.',
+    )
+  }
+}
+
+export async function updateReadingProgress(
+  userBookId: string,
+  payload: UpdateReadingProgressPayload,
+): Promise<ReadingProgressResponse> {
+  try {
+    const response = await requestJson<unknown>(`/books/${userBookId}/progress`, {
+      method: 'PATCH',
+      body: payload,
+      timeoutMs: READING_PROGRESS_TIMEOUT_MS,
+    })
+
+    return normalizeReadingProgressResponse(response)
+  } catch (error) {
+    if (error instanceof BooksApiError && error.status === 401) {
+      throw new BooksApiError(401, 'Please sign in again to save your reading position.')
+    }
+
+    throw new BooksApiError(
+      error instanceof BooksApiError ? error.status : 0,
+      'We could not save your reading position.',
+    )
   }
 }
 
