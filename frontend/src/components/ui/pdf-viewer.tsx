@@ -128,6 +128,21 @@ export type PDFViewerPageOverlayProps = {
   rotation: number
 }
 
+export type PDFViewerTextSelectionData = {
+  text: string
+  pageStart: number
+  pageEnd: number
+  startOffset: number | null
+  endOffset: number | null
+  boundingRects: Array<{
+    x: number
+    y: number
+    width: number
+    height: number
+    pageNumber: number
+  }>
+}
+
 export type PDFViewerHandle = {
   scrollToPage: (pageNumber: number, options?: ScrollIntoViewOptions) => void
   scrollToPageArea: (
@@ -136,6 +151,7 @@ export type PDFViewerHandle = {
     options?: ScrollToOptions
   ) => void
   getViewportElement: () => HTMLDivElement | null
+  clearTextSelection: () => void
 }
 
 export type PDFViewerZoomLevel = ZoomLevel
@@ -157,6 +173,8 @@ export type PDFViewerProps = {
   onDocumentLoadError?: (error: Error) => void
   onPageRenderSuccess?: (pageNumber: number) => void
   onPageRenderError?: (error: Error, pageNumber: number) => void
+  onTextSelectionChange?: (selection: PDFViewerTextSelectionData | null) => void
+  onTextSelectionError?: (error: Error) => void
   onThumbnailSidebarOpenChange?: (open: boolean) => void
   onPdfUpload?: (file: File) => void
   thumbnailSidebarOpen?: boolean
@@ -1441,6 +1459,118 @@ function PDFViewerSelectionReleaseGuard({
   return null
 }
 
+function PDFViewerTextSelectionBridge({
+  documentId,
+  onSelectionChange,
+  onSelectionError,
+}: {
+  documentId: string
+  onSelectionChange?: (selection: PDFViewerTextSelectionData | null) => void
+  onSelectionError?: (error: Error) => void
+}) {
+  const { provides: selection } = useSelectionCapability()
+  const onSelectionChangeRef = React.useRef(onSelectionChange)
+  const onSelectionErrorRef = React.useRef(onSelectionError)
+
+  React.useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange
+    onSelectionErrorRef.current = onSelectionError
+  }, [onSelectionChange, onSelectionError])
+
+  React.useEffect(() => {
+    if (!selection) return
+
+    const scope = selection.forDocument(documentId)
+    let captureTimer = 0
+    let captureVersion = 0
+    let disposed = false
+
+    const captureSelection = async () => {
+      const state = scope.getState()
+      const selectedRange = state.selection
+      const version = ++captureVersion
+
+      if (!selectedRange) {
+        onSelectionChangeRef.current?.(null)
+        return
+      }
+
+      const startsBeforeEnd =
+        selectedRange.start.page < selectedRange.end.page ||
+        (selectedRange.start.page === selectedRange.end.page &&
+          selectedRange.start.index <= selectedRange.end.index)
+      const start = startsBeforeEnd ? selectedRange.start : selectedRange.end
+      const end = startsBeforeEnd ? selectedRange.end : selectedRange.start
+      const formattedSelection = scope.getFormattedSelection()
+
+      try {
+        const textByPage = await scope.getSelectedText().toPromise()
+
+        if (disposed || version !== captureVersion) return
+
+        onSelectionChangeRef.current?.({
+          text: textByPage.join("\n"),
+          pageStart: start.page + 1,
+          pageEnd: end.page + 1,
+          startOffset: start.index,
+          endOffset: end.index + 1,
+          boundingRects: formattedSelection.flatMap(({ pageIndex, segmentRects }) =>
+            segmentRects.map((rect) => ({
+              x: rect.origin.x,
+              y: rect.origin.y,
+              width: rect.size.width,
+              height: rect.size.height,
+              pageNumber: pageIndex + 1,
+            }))
+          ),
+        })
+      } catch (error) {
+        if (disposed || version !== captureVersion) return
+
+        onSelectionErrorRef.current?.(
+          toPdfViewerError(error, "Unable to read the selected PDF text.")
+        )
+      }
+    }
+
+    const scheduleCapture = () => {
+      window.clearTimeout(captureTimer)
+      captureTimer = window.setTimeout(() => {
+        if (!scope.getState().selecting) {
+          void captureSelection()
+        }
+      }, 100)
+    }
+
+    const removeSelectionChangeListener = scope.onSelectionChange(
+      (selectedRange) => {
+        if (!selectedRange) {
+          window.clearTimeout(captureTimer)
+          captureVersion += 1
+          onSelectionChangeRef.current?.(null)
+          return
+        }
+
+        scheduleCapture()
+      }
+    )
+    const removeEndSelectionListener = scope.onEndSelection(() => {
+      window.clearTimeout(captureTimer)
+      void captureSelection()
+    })
+
+    return () => {
+      disposed = true
+      captureVersion += 1
+      window.clearTimeout(captureTimer)
+      removeSelectionChangeListener()
+      removeEndSelectionListener()
+    }
+  }, [documentId, selection])
+
+  return null
+}
+
 function isEditableCopyTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
 
@@ -1916,6 +2046,8 @@ type PDFViewerInnerProps = {
   onActivePageChange?: (pageNumber: number) => void
   onPageRenderSuccess?: PDFViewerProps["onPageRenderSuccess"]
   onPageRenderError?: PDFViewerProps["onPageRenderError"]
+  onTextSelectionChange?: PDFViewerProps["onTextSelectionChange"]
+  onTextSelectionError?: PDFViewerProps["onTextSelectionError"]
   onThumbnailSidebarOpenChange?: PDFViewerProps["onThumbnailSidebarOpenChange"]
   onPdfUpload?: (file: File) => void
   thumbnailSidebarOpen?: boolean
@@ -1944,6 +2076,8 @@ function PDFViewerInner({
   onActivePageChange,
   onPageRenderSuccess,
   onPageRenderError,
+  onTextSelectionChange,
+  onTextSelectionError,
   onThumbnailSidebarOpenChange,
   onPdfUpload,
   thumbnailSidebarOpen,
@@ -1957,6 +2091,7 @@ function PDFViewerInner({
   const { state: scrollState, provides: scroll } = useScroll(documentId)
   const { state: zoomState, provides: zoom } = useZoom(documentId)
   const { provides: thumbnails } = useThumbnailCapability()
+  const { provides: textSelection } = useSelectionCapability()
   const { plugin: thumbnailPlugin } = useThumbnailPlugin()
   const [uncontrolledSidebarOpen, setUncontrolledSidebarOpen] =
     React.useState(false)
@@ -2163,8 +2298,9 @@ function PDFViewerInner({
         })
       },
       getViewportElement: () => viewportElementRef.current,
+      clearTextSelection: () => textSelection?.clear(documentId),
     }),
-    [pdfDocument, scroll, scrollToPage]
+    [documentId, pdfDocument, scroll, scrollToPage, textSelection]
   )
 
   const handleDownload = React.useCallback(async () => {
@@ -2619,6 +2755,11 @@ function PDFViewerInner({
             className="relative h-full max-h-full min-h-0 min-w-0 flex-1"
           >
             <PDFViewerViewportBridge viewportElementRef={viewportElementRef} />
+            <PDFViewerTextSelectionBridge
+              documentId={documentId}
+              onSelectionChange={onTextSelectionChange}
+              onSelectionError={onTextSelectionError}
+            />
             <PDFViewerSelectionCopyShortcut documentId={documentId} />
             <PDFViewerSelectionReleaseGuard documentId={documentId} />
             <GlobalPointerProvider documentId={documentId}>
@@ -2791,6 +2932,8 @@ export const PDFViewer = React.forwardRef<PDFViewerHandle, PDFViewerProps>(
       onDocumentLoadError,
       onPageRenderSuccess,
       onPageRenderError,
+      onTextSelectionChange,
+      onTextSelectionError,
       onThumbnailSidebarOpenChange,
       onPdfUpload,
       thumbnailSidebarOpen,
@@ -2931,6 +3074,8 @@ export const PDFViewer = React.forwardRef<PDFViewerHandle, PDFViewerProps>(
           onDocumentLoadSuccess={onDocumentLoadSuccess}
           onPageRenderSuccess={onPageRenderSuccess}
           onPageRenderError={onPageRenderError}
+          onTextSelectionChange={onTextSelectionChange}
+          onTextSelectionError={onTextSelectionError}
           onThumbnailSidebarOpenChange={onThumbnailSidebarOpenChange}
           onPdfUpload={onPdfUpload}
           thumbnailSidebarOpen={thumbnailSidebarOpen}

@@ -11,6 +11,8 @@ import type { ReadingContentResponse } from '../../books'
 import type { ReaderPreferences } from './preferences'
 import { buildReflowedReadingPages } from './reader-content.utils'
 import { ReadingChapter } from './ReadingChapter'
+import { ReadingModeSelectionController } from './selection'
+import type { ReaderSelectionCaptureResult } from './selection'
 
 export type ReflowedReadingModeHandle = {
   scrollToPage: (pageNumber: number, behavior?: ScrollBehavior) => void
@@ -21,6 +23,7 @@ type ReflowedReadingModeProps = {
   initialPage: number
   preferences: ReaderPreferences
   onActivePageChange: (pageNumber: number) => void
+  onSelectionCapture: (result: ReaderSelectionCaptureResult) => void
 }
 
 const serifStack = "Iowan Old Style, Palatino Linotype, Book Antiqua, Georgia, serif"
@@ -30,10 +33,17 @@ export const ReflowedReadingMode = forwardRef<
   ReflowedReadingModeHandle,
   ReflowedReadingModeProps
 >(function ReflowedReadingMode(
-  { content, initialPage, preferences, onActivePageChange },
+  {
+    content,
+    initialPage,
+    preferences,
+    onActivePageChange,
+    onSelectionCapture,
+  },
   ref,
 ) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const articleRef = useRef<HTMLElement>(null)
   const didSetInitialPageRef = useRef(false)
   const onActivePageChangeRef = useRef(onActivePageChange)
   const pages = useMemo(() => buildReflowedReadingPages(content), [content])
@@ -166,15 +176,25 @@ export const ReflowedReadingMode = forwardRef<
       className="h-full overflow-y-auto overscroll-contain bg-sophia-bg px-5 py-10 text-sophia-text sm:px-8 sm:py-14"
     >
       <article
+        ref={articleRef}
         className="mx-auto w-full pb-20 selection:bg-sophia-primary/25"
+        data-reader-selection-content
         style={articleStyle}
         aria-label={`${content.book.title} in Reading Mode`}
       >
         <h1 className="sr-only">{content.book.title}</h1>
         {pages.map((page) => (
-          <ReadingChapter key={page.pageNumber} page={page} />
+          <ReadingChapter key={page.id} page={page} />
         ))}
       </article>
+      <ReadingModeSelectionController
+        bookId={content.book.bookId}
+        userBookId={content.book.userBookId}
+        chapters={content.chapters}
+        contentRef={articleRef}
+        scrollContainerRef={scrollContainerRef}
+        onCapture={onSelectionCapture}
+      />
     </div>
   )
 })

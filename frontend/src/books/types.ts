@@ -70,6 +70,7 @@ export type ReaderDataResponse = {
 }
 
 export type ReadingContentPage = {
+  id: string
   pageNumber: number
   text: string
 }

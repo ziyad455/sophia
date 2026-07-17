@@ -23,7 +23,7 @@ export function ReadingChapter({ page }: ReadingChapterProps) {
       data-chapter-id={page.chapter?.id}
     >
       {page.isChapterStart && chapterTitle ? (
-        <header className="mb-8 pt-2 sm:mb-10">
+        <header className="mb-8 select-none pt-2 sm:mb-10">
           <p className="m-0 text-xs font-semibold uppercase text-sophia-text-muted">
             Chapter {page.chapterNumber}
           </p>
@@ -34,21 +34,26 @@ export function ReadingChapter({ page }: ReadingChapterProps) {
       ) : null}
 
       <div
-        className="mb-5 text-xs font-semibold uppercase text-sophia-text-muted/80"
+        className="mb-5 select-none text-xs font-semibold uppercase text-sophia-text-muted/80"
         aria-label={`Source page ${page.pageNumber}`}
       >
         Page {page.pageNumber}
       </div>
 
       {page.paragraphs.length > 0 ? (
-        page.paragraphs.map((paragraph, index) => (
-          <ReadingParagraph
-            key={`${page.pageNumber}-${index}`}
-            text={paragraph}
-            pageNumber={page.pageNumber}
-            chapterId={page.chapter?.id ?? null}
-          />
-        ))
+        page.paragraphs.map((paragraph, index) => {
+          const sourceBlockId = `${page.id}:paragraph:${index}`
+
+          return (
+            <ReadingParagraph
+              key={sourceBlockId}
+              text={paragraph}
+              sourceBlockId={sourceBlockId}
+              pageNumber={page.pageNumber}
+              chapterId={page.chapter?.id ?? null}
+            />
+          )
+        })
       ) : (
         <p className="m-0 text-sm italic text-sophia-text-muted">
           This source page contains no extractable text.
