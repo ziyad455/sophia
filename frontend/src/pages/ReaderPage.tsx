@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ZoomMode } from '@embedpdf/plugin-zoom/react'
 import {
   BooksApiError,
@@ -14,6 +14,7 @@ import { navigate } from '../routing/navigation'
 import {
   PDFViewer,
   type PDFViewerHandle,
+  type PDFViewerTextSelectionData,
   type PDFViewerZoomLevel,
 } from '../components/ui/pdf-viewer'
 import { ReaderHeader } from '../features/reader/ReaderHeader'
@@ -27,6 +28,11 @@ import {
 import { findChapterForPage, sortChapters } from '../features/reader/reader.utils'
 import type { ReaderState } from '../features/reader/reader.types'
 import { useReadingProgress } from '../features/reader/use-reading-progress'
+import {
+  ReaderSelectionToolbar,
+  createPdfSelection,
+  useReaderSelection,
+} from '../features/reader/selection'
 import {
   ReaderPreferencesPanel,
   getReaderThemeClass,
@@ -123,6 +129,60 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     enabled: readerState.status === 'ready',
     userBookId,
   })
+  const selectionBookId = readerState.status === 'ready'
+    ? readerState.data.book.bookId
+    : null
+  const readerChapters = useMemo(
+    () => readerState.status === 'ready'
+      ? sortChapters(readerState.data.chapters)
+      : [],
+    [readerState],
+  )
+  const clearNativeReaderSelection = useCallback(() => {
+    window.getSelection()?.removeAllRanges()
+    viewerRef.current?.clearTextSelection()
+  }, [])
+  const {
+    selection,
+    selectionError,
+    captureSelection,
+    clearSelection,
+    dismissSelectionError,
+    reportSelectionError,
+  } = useReaderSelection({
+    mode: preferences.readerMode,
+    userBookId,
+    bookId: selectionBookId,
+    clearNativeSelection: clearNativeReaderSelection,
+  })
+
+  useEffect(() => {
+    if (!selection && !selectionError) {
+      return
+    }
+
+    const handleOutsideSelectionPointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) {
+        return
+      }
+
+      if (
+        event.target.closest('[data-reader-selection-toolbar]') ||
+        event.target.closest('[data-reader-selection-content]') ||
+        event.target.closest('[data-pdf-viewer-page]')
+      ) {
+        return
+      }
+
+      clearSelection()
+    }
+
+    document.addEventListener('pointerdown', handleOutsideSelectionPointer)
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideSelectionPointer)
+    }
+  }, [clearSelection, selection, selectionError])
   const readerThemeClass = getReaderThemeClass(preferences.readerTheme)
   const viewerZoom: PDFViewerZoomLevel =
     preferences.pdfFitMode === 'custom'
@@ -409,10 +469,19 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     pageChangeVersionRef.current += 1
     setCurrentPage(normalizedPage)
 
+    if (
+      selection &&
+      selection.pageStart !== null &&
+      selection.pageEnd !== null &&
+      (normalizedPage < selection.pageStart || normalizedPage > selection.pageEnd)
+    ) {
+      clearSelection()
+    }
+
     if (progressReadyToSaveRef.current) {
       queueCurrentProgress(normalizedPage)
     }
-  }, [queueCurrentProgress])
+  }, [clearSelection, queueCurrentProgress, selection])
 
   const handleDocumentLoadSuccess = useCallback(
     (numPages: number) => {
@@ -455,16 +524,44 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     })
   }, [currentPage])
 
+  const handlePdfTextSelectionChange = useCallback(
+    (pdfSelection: PDFViewerTextSelectionData | null) => {
+      if (readerState.status !== 'ready') {
+        return
+      }
+
+      captureSelection(
+        createPdfSelection({
+          data: pdfSelection,
+          userBookId,
+          bookId: readerState.data.book.bookId,
+          chapters: readerState.data.chapters,
+        }),
+      )
+    },
+    [captureSelection, readerState, userBookId],
+  )
+
+  const handlePdfTextSelectionError = useCallback(
+    (error: Error) => {
+      reportPdfFailure('PDF text selection failed', error)
+      reportSelectionError('We could not capture that passage. Please try selecting it again.')
+    },
+    [reportSelectionError],
+  )
+
   // Chapter navigation — scrolls the Extend UI viewer to a page
   const handleSelectChapter = useCallback(
     (pageStart: number) => {
+      clearSelection()
+
       if (preferences.readerMode === 'reading') {
         reflowedReaderRef.current?.scrollToPage(pageStart)
       } else {
         viewerRef.current?.scrollToPage(pageStart)
       }
     },
-    [preferences.readerMode],
+    [clearSelection, preferences.readerMode],
   )
 
   const toggleChapterDrawer = useCallback(() => {
@@ -488,6 +585,8 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         return
       }
 
+      clearSelection()
+
       if (progressReadyToSaveRef.current) {
         queueCurrentProgress(currentPageRef.current)
         void flushProgress()
@@ -504,7 +603,13 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
       updatePreferences({ readerMode: mode })
     },
-    [flushProgress, preferences.readerMode, queueCurrentProgress, updatePreferences],
+    [
+      clearSelection,
+      flushProgress,
+      preferences.readerMode,
+      queueCurrentProgress,
+      updatePreferences,
+    ],
   )
 
   function handleRetryPdf() {
@@ -605,8 +710,8 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   }
 
   // --- Ready state ---
-  const { book, chapters: rawChapters } = readerState.data
-  const chapters = sortChapters(rawChapters)
+  const { book } = readerState.data
+  const chapters = readerChapters
   const hasChapters = chapters.length > 0
   const activeChapter = findChapterForPage(chapters, currentPage)
   const effectivePageCount = viewerPageCount ?? book.pageCount
@@ -736,6 +841,8 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
                   onDocumentLoadSuccess={handleDocumentLoadSuccess}
                   onPageRenderError={handlePageRenderError}
                   onPageRenderSuccess={handlePageRenderSuccess}
+                  onTextSelectionChange={handlePdfTextSelectionChange}
+                  onTextSelectionError={handlePdfTextSelectionError}
                   onThumbnailSidebarOpenChange={handleThumbnailSidebarOpenChange}
                   thumbnailSidebarOpen={preferences.readerSidebarOpen}
                   className="h-full w-full"
@@ -782,6 +889,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
                   initialPage={currentPage}
                   preferences={preferences}
                   onActivePageChange={handleActivePageChange}
+                  onSelectionCapture={captureSelection}
                 />
               ) : null}
 
@@ -830,6 +938,13 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         isOpen={chapterDrawerOpen}
         onClose={closeChapterDrawer}
         onSelectChapter={handleSelectChapter}
+      />
+
+      <ReaderSelectionToolbar
+        selection={selection}
+        error={selectionError}
+        onClear={clearSelection}
+        onDismissError={dismissSelectionError}
       />
     </main>
   )

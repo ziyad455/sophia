@@ -304,6 +304,7 @@ function normalizeReadingContentPage(value: unknown): ReadingContentResponse['un
   }
 
   return {
+    id: readString(value.id, `page-${pageNumber}`),
     pageNumber,
     text: readString(value.text),
   }

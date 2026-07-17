@@ -44,6 +44,7 @@ export type ReaderData = {
 };
 
 export type ReadingContentPage = {
+  id: string;
   pageNumber: number;
   text: string;
 };

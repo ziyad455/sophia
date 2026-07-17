@@ -654,6 +654,7 @@ export async function getUserLibraryBookReadingContent(
               pageNumber: "asc",
             },
             select: {
+              id: true,
               chapterId: true,
               pageNumber: true,
               text: true,
@@ -681,6 +682,7 @@ export async function getUserLibraryBookReadingContent(
 
   for (const page of userBook.book.pages) {
     const serializedPage: ReadingContentPage = {
+      id: page.id,
       pageNumber: page.pageNumber,
       text: page.text ?? "",
     };
