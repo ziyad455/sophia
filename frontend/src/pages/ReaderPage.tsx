@@ -29,6 +29,7 @@ import {
   isStructurallyUnresolved,
   useHighlights,
   type HighlightColor,
+  type HighlightPreview,
   type ReaderHighlight,
 } from '../features/reader/highlights'
 import {
@@ -42,6 +43,8 @@ import {
   ReaderSelectionToolbar,
   createPdfSelection,
   useReaderSelection,
+  type ReaderSelection,
+  type ReaderSelectionCaptureResult,
 } from '../features/reader/selection'
 import {
   ReaderPreferencesPanel,
@@ -101,6 +104,31 @@ function createProgressPayload(
   }
 }
 
+function getSelectionPreviewKey(selection: ReaderSelection): string {
+  const pdfAnchor = selection.mode === 'pdf'
+    ? selection.boundingRects.map((rect) => [
+        rect.pageNumber,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+      ])
+    : null
+
+  return JSON.stringify([
+    selection.mode,
+    selection.userBookId,
+    selection.bookId,
+    selection.text,
+    selection.pageStart,
+    selection.pageEnd,
+    selection.sourceBlockId,
+    selection.startOffset,
+    selection.endOffset,
+    pdfAnchor,
+  ])
+}
+
 export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [readerState, setReaderState] = useState<ReaderState>({ status: 'loading' })
   const [pdfState, setPdfState] = useState<PdfState>({ status: 'idle' })
@@ -117,6 +145,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [highlightsPanelOpen, setHighlightsPanelOpen] = useState(false)
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null)
   const [highlightNotice, setHighlightNotice] = useState<string | null>(null)
+  const [previewColor, setPreviewColor] = useState<HighlightColor>('gold')
   const viewerRef = useRef<PDFViewerHandle>(null)
   const reflowedReaderRef = useRef<ReflowedReadingModeHandle>(null)
   const blobUrlRef = useRef<string | null>(null)
@@ -125,6 +154,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const pageChangeVersionRef = useRef(0)
   const progressAppliedRef = useRef(false)
   const progressReadyToSaveRef = useRef(false)
+  const previewSelectionKeyRef = useRef<string | null>(null)
   const {
     preferences,
     loading: preferencesLoading,
@@ -158,16 +188,47 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const {
     selection,
     selectionError,
-    captureSelection,
-    clearSelection,
+    captureSelection: captureReaderSelection,
+    clearSelection: clearReaderSelection,
     dismissSelectionError,
-    reportSelectionError,
+    reportSelectionError: reportReaderSelectionError,
   } = useReaderSelection({
     mode: preferences.readerMode,
     userBookId,
     bookId: selectionBookId,
     clearNativeSelection: clearNativeReaderSelection,
   })
+  const captureSelection = useCallback((result: ReaderSelectionCaptureResult) => {
+    if (result.status === 'valid') {
+      const selectionKey = getSelectionPreviewKey(result.selection)
+
+      if (previewSelectionKeyRef.current !== selectionKey) {
+        previewSelectionKeyRef.current = selectionKey
+        setPreviewColor('gold')
+      }
+    } else {
+      previewSelectionKeyRef.current = null
+      setPreviewColor('gold')
+    }
+
+    captureReaderSelection(result)
+  }, [captureReaderSelection])
+  const clearSelection = useCallback(() => {
+    previewSelectionKeyRef.current = null
+    setPreviewColor('gold')
+    clearReaderSelection()
+  }, [clearReaderSelection])
+  const reportSelectionError = useCallback((message: string) => {
+    previewSelectionKeyRef.current = null
+    setPreviewColor('gold')
+    reportReaderSelectionError(message)
+  }, [reportReaderSelectionError])
+  const highlightPreview = useMemo<HighlightPreview | null>(
+    () => selection
+      ? { selection, color: previewColor, temporary: true }
+      : null,
+    [previewColor, selection],
+  )
   const {
     highlights,
     loading: highlightsLoading,
@@ -208,15 +269,18 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     setActiveHighlightId(highlightId)
   }, [])
 
-  const handleSaveHighlight = useCallback(async (color: HighlightColor) => {
-    if (!selection) {
+  const handleSaveHighlight = useCallback(async () => {
+    if (!highlightPreview) {
       return
     }
 
     clearHighlightMutationError()
 
     try {
-      const savedHighlight = await saveHighlight(selection, color)
+      const savedHighlight = await saveHighlight(
+        highlightPreview.selection,
+        highlightPreview.color,
+      )
 
       clearSelection()
       setActiveHighlightId(savedHighlight.id)
@@ -232,8 +296,8 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   }, [
     clearHighlightMutationError,
     clearSelection,
+    highlightPreview,
     saveHighlight,
-    selection,
   ])
 
   const dismissSelectionToolbarError = useCallback(() => {
@@ -246,11 +310,12 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
       <PdfHighlightsOverlay
         {...overlayProps}
         highlights={highlights}
+        preview={highlightPreview}
         activeHighlightId={activeHighlightId}
         onActivate={activateHighlight}
       />
     ),
-    [activateHighlight, activeHighlightId, highlights],
+    [activateHighlight, activeHighlightId, highlightPreview, highlights],
   )
 
   useEffect(() => {
@@ -1037,6 +1102,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
                   initialPage={currentPage}
                   preferences={preferences}
                   highlights={highlights}
+                  preview={highlightPreview}
                   activeHighlightId={activeHighlightId}
                   onActivePageChange={handleActivePageChange}
                   onHighlightActivate={activateHighlight}
@@ -1109,6 +1175,8 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         selection={selection}
         error={selectionError ?? (selection ? highlightMutationError : null)}
         saving={highlightSaving}
+        color={previewColor}
+        onColorChange={setPreviewColor}
         onHighlight={handleSaveHighlight}
         onClear={clearSelection}
         onDismissError={dismissSelectionToolbarError}

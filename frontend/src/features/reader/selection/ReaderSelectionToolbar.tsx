@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import type { CSSProperties, PointerEvent } from 'react'
 import { Highlighter, LoaderCircle, X } from 'lucide-react'
 import type { HighlightColor } from '../highlights'
@@ -9,7 +9,9 @@ type ReaderSelectionToolbarProps = {
   selection: ReaderSelection | null
   error: string | null
   saving: boolean
-  onHighlight: (color: HighlightColor) => void | Promise<void>
+  color: HighlightColor
+  onColorChange: (color: HighlightColor) => void
+  onHighlight: () => void | Promise<void>
   onClear: () => void
   onDismissError: () => void
 }
@@ -79,16 +81,12 @@ export function ReaderSelectionToolbar({
   selection,
   error,
   saving,
+  color,
+  onColorChange,
   onHighlight,
   onClear,
   onDismissError,
 }: ReaderSelectionToolbarProps) {
-  const [color, setColor] = useState<HighlightColor>('gold')
-
-  useEffect(() => {
-    setColor('gold')
-  }, [selection?.createdAt])
-
   useEffect(() => {
     if (!selection && !error) {
       return
@@ -153,7 +151,7 @@ export function ReaderSelectionToolbar({
             key={option}
             type="button"
             className={`grid h-9 w-9 place-items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary ${color === option ? 'bg-sophia-bg ring-1 ring-sophia-border' : 'hover:bg-sophia-bg'}`}
-            onClick={() => setColor(option)}
+            onClick={() => onColorChange(option)}
             disabled={saving}
             aria-label={`Use ${option} highlight`}
             aria-pressed={color === option}
@@ -178,7 +176,7 @@ export function ReaderSelectionToolbar({
       <button
         type="button"
         className="inline-flex h-9 min-w-20 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold text-sophia-text hover:bg-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary disabled:cursor-wait disabled:opacity-60"
-        onClick={() => void onHighlight(color)}
+        onClick={() => void onHighlight()}
         disabled={saving}
         aria-label={saving ? 'Saving highlight' : 'Save highlight'}
       >

@@ -1,4 +1,8 @@
-import type { HighlightColor, ReaderHighlight } from './highlight.types'
+import type {
+  HighlightColor,
+  HighlightPreview,
+  ReaderHighlight,
+} from './highlight.types'
 
 export const highlightMarkClass: Record<HighlightColor, string> = {
   gold: 'bg-amber-300/45',
@@ -18,6 +22,42 @@ export type ResolvedHighlightRange = {
   highlight: ReaderHighlight
   start: number
   end: number
+}
+
+export type ResolvedHighlightPreviewRange = {
+  preview: HighlightPreview
+  start: number
+  end: number
+}
+
+function resolveTextRange(
+  text: string,
+  selectedText: string,
+  startOffset: number | null,
+  endOffset: number | null,
+): { start: number; end: number } | null {
+  if (startOffset === null || endOffset === null) {
+    return null
+  }
+
+  if (
+    startOffset >= 0 &&
+    endOffset <= text.length &&
+    text.slice(startOffset, endOffset) === selectedText
+  ) {
+    return { start: startOffset, end: endOffset }
+  }
+
+  const firstMatch = text.indexOf(selectedText)
+
+  if (firstMatch < 0 || text.indexOf(selectedText, firstMatch + 1) >= 0) {
+    return null
+  }
+
+  return {
+    start: firstMatch,
+    end: firstMatch + selectedText.length,
+  }
 }
 
 export function sortHighlights(highlights: ReaderHighlight[]): ReaderHighlight[] {
@@ -44,37 +84,45 @@ export function resolveReadingHighlight(
   text: string,
   highlight: ReaderHighlight,
 ): ResolvedHighlightRange | null {
-  if (
-    highlight.mode !== 'reading' ||
-    highlight.startOffset === null ||
-    highlight.endOffset === null
-  ) {
+  if (highlight.mode !== 'reading') {
     return null
   }
 
-  if (
-    highlight.startOffset >= 0 &&
-    highlight.endOffset <= text.length &&
-    text.slice(highlight.startOffset, highlight.endOffset) === highlight.text
-  ) {
-    return {
-      highlight,
-      start: highlight.startOffset,
-      end: highlight.endOffset,
-    }
-  }
+  const range = resolveTextRange(
+    text,
+    highlight.text,
+    highlight.startOffset,
+    highlight.endOffset,
+  )
 
-  const firstMatch = text.indexOf(highlight.text)
-
-  if (firstMatch < 0 || text.indexOf(highlight.text, firstMatch + 1) >= 0) {
+  if (!range) {
     return null
   }
 
   return {
     highlight,
-    start: firstMatch,
-    end: firstMatch + highlight.text.length,
+    ...range,
   }
+}
+
+export function resolveReadingHighlightPreview(
+  text: string,
+  preview: HighlightPreview,
+): ResolvedHighlightPreviewRange | null {
+  const { selection } = preview
+
+  if (selection.mode !== 'reading' || selection.sourceBlockId === null) {
+    return null
+  }
+
+  const range = resolveTextRange(
+    text,
+    selection.text,
+    selection.startOffset,
+    selection.endOffset,
+  )
+
+  return range ? { preview, ...range } : null
 }
 
 export function resolveNonOverlappingRanges(

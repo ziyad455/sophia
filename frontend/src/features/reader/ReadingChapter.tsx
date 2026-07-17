@@ -1,10 +1,11 @@
-import type { ReaderHighlight } from './highlights'
+import type { HighlightPreview, ReaderHighlight } from './highlights'
 import type { ReflowedReadingPage } from './reader-content.utils'
 import { ReadingParagraph } from './ReadingParagraph'
 
 type ReadingChapterProps = {
   page: ReflowedReadingPage
   highlights: ReaderHighlight[]
+  preview: HighlightPreview | null
   activeHighlightId: string | null
   onHighlightActivate: (highlightId: string) => void
 }
@@ -12,6 +13,7 @@ type ReadingChapterProps = {
 export function ReadingChapter({
   page,
   highlights,
+  preview,
   activeHighlightId,
   onHighlightActivate,
 }: ReadingChapterProps) {
@@ -57,6 +59,10 @@ export function ReadingChapter({
               highlight.mode === 'reading' &&
               highlight.sourceBlockId === sourceBlockId,
           )
+          const blockPreview = preview?.selection.mode === 'reading' &&
+            preview.selection.sourceBlockId === sourceBlockId
+            ? preview
+            : null
 
           return (
             <ReadingParagraph
@@ -66,6 +72,7 @@ export function ReadingChapter({
               pageNumber={page.pageNumber}
               chapterId={page.chapter?.id ?? null}
               highlights={blockHighlights}
+              preview={blockPreview}
               activeHighlightId={activeHighlightId}
               onHighlightActivate={onHighlightActivate}
             />
