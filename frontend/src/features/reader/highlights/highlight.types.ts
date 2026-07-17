@@ -31,6 +31,12 @@ export type ReaderHighlight = {
   updatedAt: string
 }
 
+export type HighlightPreview = {
+  selection: ReaderSelection
+  color: HighlightColor
+  temporary: true
+}
+
 export type CreateHighlightSelection = Pick<
   ReaderSelection,
   | 'text'

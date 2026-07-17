@@ -8,7 +8,11 @@ import {
 } from 'react'
 import type { CSSProperties } from 'react'
 import type { ReadingContentResponse } from '../../books'
-import type { ReaderHighlight } from './highlights'
+import {
+  highlightOverlayColor,
+  type HighlightPreview,
+  type ReaderHighlight,
+} from './highlights'
 import type { ReaderPreferences } from './preferences'
 import { buildReflowedReadingPages } from './reader-content.utils'
 import { ReadingChapter } from './ReadingChapter'
@@ -31,6 +35,7 @@ type ReflowedReadingModeProps = {
   onActivePageChange: (pageNumber: number) => void
   onSelectionCapture: (result: ReaderSelectionCaptureResult) => void
   highlights: ReaderHighlight[]
+  preview: HighlightPreview | null
   activeHighlightId: string | null
   onHighlightActivate: (highlightId: string) => void
 }
@@ -49,6 +54,7 @@ export const ReflowedReadingMode = forwardRef<
     onActivePageChange,
     onSelectionCapture,
     highlights,
+    preview,
     activeHighlightId,
     onHighlightActivate,
   },
@@ -216,12 +222,15 @@ export const ReflowedReadingMode = forwardRef<
     }
   }, [pages])
 
-  const articleStyle: CSSProperties = {
+  const articleStyle: CSSProperties & { '--reader-selection-color': string } = {
     fontFamily:
       preferences.readingFontFamily === 'sans' ? sansStack : serifStack,
     fontSize: `${preferences.readingFontSize}px`,
     lineHeight: preferences.readingLineHeight,
     maxWidth: `${preferences.readingContentWidth}px`,
+    '--reader-selection-color': preview
+      ? highlightOverlayColor[preview.color]
+      : 'color-mix(in srgb, var(--sophia-primary) 25%, transparent)',
   }
 
   return (
@@ -231,7 +240,7 @@ export const ReflowedReadingMode = forwardRef<
     >
       <article
         ref={articleRef}
-        className="mx-auto w-full pb-20 selection:bg-sophia-primary/25"
+        className="mx-auto w-full pb-20 selection:bg-[var(--reader-selection-color)]"
         data-reader-selection-content
         style={articleStyle}
         aria-label={`${content.book.title} in Reading Mode`}
@@ -242,6 +251,7 @@ export const ReflowedReadingMode = forwardRef<
             key={page.id}
             page={page}
             highlights={highlights}
+            preview={preview}
             activeHighlightId={activeHighlightId}
             onHighlightActivate={onHighlightActivate}
           />

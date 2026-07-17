@@ -1,11 +1,16 @@
 import { Fragment } from 'react'
 import type { KeyboardEvent } from 'react'
-import type { ReaderHighlight } from './highlight.types'
-import { highlightMarkClass, resolveNonOverlappingRanges } from './highlight.utils'
+import type { HighlightPreview, ReaderHighlight } from './highlight.types'
+import {
+  highlightMarkClass,
+  resolveNonOverlappingRanges,
+  resolveReadingHighlightPreview,
+} from './highlight.utils'
 
 type ReadingHighlightRendererProps = {
   text: string
   highlights: ReaderHighlight[]
+  preview: HighlightPreview | null
   activeHighlightId: string | null
   onActivate: (highlightId: string) => void
 }
@@ -13,10 +18,23 @@ type ReadingHighlightRendererProps = {
 export function ReadingHighlightRenderer({
   text,
   highlights,
+  preview,
   activeHighlightId,
   onActivate,
 }: ReadingHighlightRendererProps) {
-  const ranges = resolveNonOverlappingRanges(text, highlights)
+  const savedRanges = resolveNonOverlappingRanges(text, highlights)
+  const previewRange = preview ? resolveReadingHighlightPreview(text, preview) : null
+  const previewOverlapsSaved = previewRange
+    ? savedRanges.some(
+        (range) => previewRange.start < range.end && previewRange.end > range.start,
+      )
+    : false
+  const ranges = [
+    ...savedRanges.map((range) => ({ ...range, kind: 'saved' as const })),
+    ...(previewRange && !previewOverlapsSaved
+      ? [{ ...previewRange, kind: 'preview' as const }]
+      : []),
+  ].sort((left, right) => left.start - right.start || left.end - right.end)
 
   if (ranges.length === 0) {
     return text
@@ -41,6 +59,20 @@ export function ReadingHighlightRenderer({
           {text.slice(cursor, range.start)}
         </Fragment>,
       )
+    }
+
+    if (range.kind === 'preview') {
+      nodes.push(
+        <mark
+          key={`preview-${range.preview.selection.createdAt}`}
+          className={`rounded-[2px] px-[0.04em] text-inherit ${highlightMarkClass[range.preview.color]}`}
+          data-highlight-preview="true"
+        >
+          {text.slice(range.start, range.end)}
+        </mark>,
+      )
+      cursor = range.end
+      continue
     }
 
     const isActive = activeHighlightId === range.highlight.id

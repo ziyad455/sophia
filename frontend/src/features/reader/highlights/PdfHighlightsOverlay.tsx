@@ -1,9 +1,10 @@
 import type { PDFViewerPageOverlayProps } from '../../../components/ui/pdf-viewer'
-import type { ReaderHighlight } from './highlight.types'
+import type { HighlightPreview, ReaderHighlight } from './highlight.types'
 import { highlightOverlayColor } from './highlight.utils'
 
 type PdfHighlightsOverlayProps = PDFViewerPageOverlayProps & {
   highlights: ReaderHighlight[]
+  preview: HighlightPreview | null
   activeHighlightId: string | null
   onActivate: (highlightId: string) => void
 }
@@ -14,6 +15,7 @@ export function PdfHighlightsOverlay({
   pageHeight,
   scale,
   highlights,
+  preview,
   activeHighlightId,
   onActivate,
 }: PdfHighlightsOverlayProps) {
@@ -30,13 +32,22 @@ export function PdfHighlightsOverlay({
 
     return rects.length > 0 ? [{ highlight, rects }] : []
   })
+  const previewRects = preview?.selection.mode === 'pdf'
+    ? preview.selection.boundingRects.filter(
+        (rect) =>
+          rect.coordinateSpace === 'pdf-page' &&
+          rect.pageNumber === pageNumber &&
+          rect.x < pageWidth &&
+          rect.y < pageHeight,
+      )
+    : []
 
-  if (pageHighlights.length === 0) {
+  if (pageHighlights.length === 0 && previewRects.length === 0) {
     return null
   }
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-10" aria-label="Saved highlights">
+    <div className="pointer-events-none absolute inset-0 z-10" aria-label="Highlights">
       {pageHighlights.flatMap(({ highlight, rects }) =>
         rects.map((rect, index) => {
           const style = {
@@ -75,6 +86,21 @@ export function PdfHighlightsOverlay({
           )
         }),
       )}
+      {previewRects.map((rect, index) => (
+        <span
+          key={`preview-${pageNumber}-${index}`}
+          className="absolute mix-blend-multiply"
+          data-highlight-preview="true"
+          style={{
+            left: rect.x * scale,
+            top: rect.y * scale,
+            width: rect.width * scale,
+            height: rect.height * scale,
+            backgroundColor: highlightOverlayColor[preview?.color ?? 'gold'],
+          }}
+          aria-hidden="true"
+        />
+      ))}
     </div>
   )
 }
