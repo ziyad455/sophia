@@ -140,6 +140,66 @@
   --ring: oklch(0.7 0.07 80);
 }
 
+.reader-mood-printed-ink {
+  color-scheme: dark;
+  --background: #071019;
+  --foreground: #f3e4c7;
+  --popover: #101a22;
+  --popover-foreground: #f3e4c7;
+  --muted: #0d1a24;
+  --muted-foreground: #b9a98e;
+  --border: rgba(184, 137, 61, 0.35);
+  --input: rgba(184, 137, 61, 0.35);
+  --ring: #b8893d;
+  --pdf-page-filter: url('#sophia-pdf-printed-ink');
+  --pdf-page-shadow: 0 4px 16px rgba(7, 16, 25, 0.14);
+  --pdf-highlight-blend-mode: multiply;
+}
+
+.reader-mood-warm-paper {
+  color-scheme: light;
+  --background: #f4ebdd;
+  --foreground: #2b2118;
+  --popover: #fff8ed;
+  --popover-foreground: #2b2118;
+  --muted: #efe1cc;
+  --muted-foreground: #6f6255;
+  --border: #ded0bd;
+  --input: #ded0bd;
+  --ring: #8b5e34;
+  --pdf-page-filter: url('#sophia-pdf-warm-paper');
+  --pdf-page-shadow: 0 6px 20px rgba(43, 33, 24, 0.2);
+  --pdf-highlight-blend-mode: multiply;
+}
+
+.reader-mood-night-study {
+  color-scheme: dark;
+  --background: #111111;
+  --foreground: #ede7dd;
+  --popover: #1a1a1a;
+  --popover-foreground: #ede7dd;
+  --muted: #202020;
+  --muted-foreground: #a89f94;
+  --border: #2c2c2c;
+  --input: #2c2c2c;
+  --ring: #c9a86a;
+  --pdf-page-filter: url('#sophia-pdf-night-study');
+  --pdf-page-shadow: 0 4px 18px rgba(0, 0, 0, 0.46);
+  --pdf-highlight-blend-mode: screen;
+}
+
+:is(.reader-mood-printed-ink, .reader-mood-warm-paper, .reader-mood-night-study) [data-pdf-render-layer] {
+  filter: var(--pdf-page-filter);
+}
+
+:is(.reader-mood-printed-ink, .reader-mood-warm-paper, .reader-mood-night-study) [data-pdf-viewer-page] {
+  box-shadow: var(--pdf-page-shadow);
+}
+
+:is(.reader-mood-printed-ink, .reader-mood-warm-paper, .reader-mood-night-study) [data-pdf-highlight-overlay] {
+  mix-blend-mode: var(--pdf-highlight-blend-mode);
+}
+
 @media (prefers-color-scheme: dark) {
   .reader-theme-system {
     color-scheme: dark;

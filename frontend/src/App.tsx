@@ -1,8 +1,6 @@
-import { useEffect } from 'react'
 import { GuestRoute } from './routing/GuestRoute'
 import { ProtectedRoute } from './routing/ProtectedRoute'
 import { useRouteLocation } from './routing/navigation'
-import { applyStoredTheme } from './theme'
 import { LibraryPage } from './pages/LibraryPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -44,10 +42,6 @@ function normalizePathname(pathname: string) {
 function App() {
   const location = useRouteLocation()
   const pathname = normalizePathname(location.pathname)
-
-  useEffect(() => {
-    applyStoredTheme()
-  }, [])
 
   if (pathname === '/') {
     return <PublicHomePage />

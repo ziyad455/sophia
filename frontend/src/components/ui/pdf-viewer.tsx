@@ -2468,24 +2468,27 @@ function PDFViewerInner({
             }
           >
             <div
+              data-pdf-render-layer
+              className="pointer-events-none absolute inset-0"
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-white"
-            />
-            <PDFViewerRenderLayer
-              documentId={documentId}
-              pageIndex={page.pageIndex}
-              scale={Math.min(currentZoomLevel, PAGE_BASE_RENDER_MAX_SCALE)}
-              dpr={PAGE_BASE_RENDER_DPR}
-              onRenderError={onPageRenderError}
-              onRenderSuccess={onPageRenderSuccess}
-              className="pointer-events-none absolute inset-0 h-full w-full object-fill opacity-100 blur-[0.35px] transition-none"
-            />
-            <TilingLayer
-              documentId={documentId}
-              pageIndex={page.pageIndex}
-              key={`tiles-${page.pageIndex}-${pageRotation}`}
-              className="pointer-events-none opacity-100 transition-none [&_img]:opacity-100 [&_img]:transition-none"
-            />
+            >
+              <div className="absolute inset-0 bg-white" />
+              <PDFViewerRenderLayer
+                documentId={documentId}
+                pageIndex={page.pageIndex}
+                scale={Math.min(currentZoomLevel, PAGE_BASE_RENDER_MAX_SCALE)}
+                dpr={PAGE_BASE_RENDER_DPR}
+                onRenderError={onPageRenderError}
+                onRenderSuccess={onPageRenderSuccess}
+                className="absolute inset-0 h-full w-full object-fill opacity-100 blur-[0.35px] transition-none"
+              />
+              <TilingLayer
+                documentId={documentId}
+                pageIndex={page.pageIndex}
+                key={`tiles-${page.pageIndex}-${pageRotation}`}
+                className="absolute inset-0 opacity-100 transition-none [&_img]:opacity-100 [&_img]:transition-none"
+              />
+            </div>
             <SearchLayer
               documentId={documentId}
               pageIndex={page.pageIndex}

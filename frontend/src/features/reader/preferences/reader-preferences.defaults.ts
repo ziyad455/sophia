@@ -3,6 +3,7 @@ import type {
   ReaderMode,
   ReaderPreferences,
   ReaderTheme,
+  ReadingMood,
   ReadingFontFamily,
 } from './reader-preferences.types'
 
@@ -10,6 +11,32 @@ export const READER_THEMES: Array<{ value: ReaderTheme; label: string }> = [
   { value: 'system', label: 'System' },
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
+]
+
+export const READING_MOODS: Array<{
+  value: ReadingMood
+  label: string
+  pageColor: string
+  inkColor: string
+}> = [
+  {
+    value: 'printed-ink',
+    label: 'Printed Ink',
+    pageColor: '#efe1c7',
+    inkColor: '#071019',
+  },
+  {
+    value: 'warm-paper',
+    label: 'Warm Paper',
+    pageColor: '#fff8ed',
+    inkColor: '#2b2118',
+  },
+  {
+    value: 'night-study',
+    label: 'Night Study',
+    pageColor: '#202020',
+    inkColor: '#ede7dd',
+  },
 ]
 
 export const PDF_FIT_MODES: Array<{ value: PdfFitMode; label: string }> = [
@@ -43,6 +70,7 @@ export const READING_CONTENT_WIDTHS = [
 
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   readerTheme: 'system',
+  readingMood: 'warm-paper',
   readerMode: 'pdf',
   pdfFitMode: 'fit-width',
   pdfZoom: 100,
@@ -55,4 +83,8 @@ export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
 
 export function getReaderThemeClass(theme: ReaderTheme): string {
   return `reader-theme-${theme}`
+}
+
+export function getReadingMoodClass(mood: ReadingMood): string {
+  return `reader-mood-${mood}`
 }
