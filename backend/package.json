@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "prestart": "npm run build",
     "start": "node dist/src/index.js",
-    "test": "npm run build && node dist/src/highlights/highlights.dto.test.js",
+    "test": "npm run build && node dist/src/highlights/highlights.dto.test.js && node dist/src/preferences/preferences.dto.test.js",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm run build && npm run db:validate",
     "db:generate": "prisma generate",

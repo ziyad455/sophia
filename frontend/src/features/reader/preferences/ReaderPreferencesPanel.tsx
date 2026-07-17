@@ -1,4 +1,4 @@
-import { Settings2 } from 'lucide-react'
+import { Check, Settings2 } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
@@ -10,7 +10,7 @@ import {
 import {
   PDF_FIT_MODES,
   PDF_ZOOM_OPTIONS,
-  READER_THEMES,
+  READING_MOODS,
   READING_CONTENT_WIDTHS,
   READING_FONT_FAMILIES,
   READING_FONT_SIZES,
@@ -20,7 +20,6 @@ import type {
   PdfFitMode,
   ReaderPreferences,
   ReaderPreferencesUpdate,
-  ReaderTheme,
   ReadingFontFamily,
 } from './reader-preferences.types'
 
@@ -29,7 +28,7 @@ type ReaderPreferencesPanelProps = {
   loading: boolean
   saving: boolean
   error: string | null
-  themeClassName: string
+  moodClassName: string
   onChange: (update: ReaderPreferencesUpdate) => void
   onReset: () => void
 }
@@ -42,7 +41,7 @@ export function ReaderPreferencesPanel({
   loading,
   saving,
   error,
-  themeClassName,
+  moodClassName,
   onChange,
   onReset,
 }: ReaderPreferencesPanelProps) {
@@ -63,7 +62,7 @@ export function ReaderPreferencesPanel({
       <PopoverContent
         align="end"
         sideOffset={8}
-        className={`${themeClassName} w-[min(20rem,calc(100vw-1.5rem))] gap-4 border border-sophia-border bg-sophia-surface p-4 text-sophia-text`}
+        className={`${moodClassName} w-[min(20rem,calc(100vw-1.5rem))] gap-4 border border-sophia-border bg-sophia-surface p-4 text-sophia-text`}
       >
         <PopoverHeader>
           <PopoverTitle className="text-base font-semibold text-sophia-text">
@@ -77,23 +76,44 @@ export function ReaderPreferencesPanel({
         </PopoverHeader>
 
         <div className="grid gap-4">
-          <label className="grid gap-1.5 text-sm font-medium text-sophia-text">
-            Theme
-            <select
-              className={fieldClassName}
-              value={preferences.readerTheme}
-              disabled={loading}
-              onChange={(event) =>
-                onChange({ readerTheme: event.target.value as ReaderTheme })
-              }
-            >
-              {READER_THEMES.map((theme) => (
-                <option key={theme.value} value={theme.value}>
-                  {theme.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <fieldset className="grid gap-2" disabled={loading}>
+            <legend className="mb-1 text-sm font-medium text-sophia-text">
+              Reading Mood
+            </legend>
+            {READING_MOODS.map((mood) => {
+              const selected = preferences.readingMood === mood.value
+
+              return (
+                <label
+                  key={mood.value}
+                  className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 text-sm font-medium transition-colors has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-sophia-primary ${selected ? 'border-sophia-primary bg-sophia-bg text-sophia-text' : 'border-sophia-border text-sophia-text-muted hover:bg-sophia-bg'} ${loading ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="reading-mood"
+                    value={mood.value}
+                    className="sr-only"
+                    checked={selected}
+                    onChange={() => onChange({ readingMood: mood.value })}
+                  />
+                  <span
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-[3px] border border-black/15"
+                    style={{ backgroundColor: mood.pageColor }}
+                    aria-hidden="true"
+                  >
+                    <span
+                      className="h-3.5 w-[2px] rounded-full"
+                      style={{ backgroundColor: mood.inkColor }}
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">{mood.label}</span>
+                  {selected ? (
+                    <Check className="h-4 w-4 text-sophia-primary" aria-hidden="true" />
+                  ) : null}
+                </label>
+              )
+            })}
+          </fieldset>
 
           {preferences.readerMode === 'pdf' ? (
             <>

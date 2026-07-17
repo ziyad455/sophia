@@ -1,10 +1,12 @@
 export type ReaderTheme = 'system' | 'light' | 'dark'
+export type ReadingMood = 'printed-ink' | 'warm-paper' | 'night-study'
 export type ReaderMode = 'pdf' | 'reading'
 export type PdfFitMode = 'fit-width' | 'fit-page' | 'custom'
 export type ReadingFontFamily = 'serif' | 'sans'
 
 export type ReaderPreferences = {
   readerTheme: ReaderTheme
+  readingMood: ReadingMood
   readerMode: ReaderMode
   pdfFitMode: PdfFitMode
   pdfZoom: number

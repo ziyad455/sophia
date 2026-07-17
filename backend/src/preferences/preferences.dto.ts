@@ -11,16 +11,19 @@ import {
   PDF_FIT_MODES,
   READER_MODES,
   READER_THEMES,
+  READING_MOODS,
   READING_FONT_FAMILIES,
   type PdfFitMode,
   type ReaderMode,
   type ReaderPreferencesUpdate,
   type ReaderTheme,
+  type ReadingMood,
   type ReadingFontFamily,
 } from "./preferences.types";
 
 const editableFields = new Set([
   "readerTheme",
+  "readingMood",
   "readerMode",
   "pdfFitMode",
   "pdfZoom",
@@ -45,6 +48,14 @@ function parseReaderTheme(value: unknown): ReaderTheme {
   }
 
   return value as ReaderTheme;
+}
+
+function parseReadingMood(value: unknown): ReadingMood {
+  if (typeof value !== "string" || !READING_MOODS.includes(value as ReadingMood)) {
+    throw badRequest("readingMood must be printed-ink, warm-paper, or night-study.");
+  }
+
+  return value as ReadingMood;
 }
 
 function parsePdfFitMode(value: unknown): PdfFitMode {
@@ -158,6 +169,10 @@ export function parseReaderPreferencesUpdate(value: unknown): ReaderPreferencesU
 
   if (hasOwn(value, "readerTheme")) {
     update.readerTheme = parseReaderTheme(value.readerTheme);
+  }
+
+  if (hasOwn(value, "readingMood")) {
+    update.readingMood = parseReadingMood(value.readingMood);
   }
 
   if (hasOwn(value, "readerMode")) {

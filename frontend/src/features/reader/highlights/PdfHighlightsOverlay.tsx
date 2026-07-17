@@ -65,7 +65,8 @@ export function PdfHighlightsOverlay({
             return (
               <span
                 key={`${highlight.id}-${pageNumber}-${index}`}
-                className="absolute mix-blend-multiply"
+                className="absolute"
+                data-pdf-highlight-overlay
                 style={style}
                 aria-hidden="true"
               />
@@ -76,7 +77,8 @@ export function PdfHighlightsOverlay({
             <button
               key={`${highlight.id}-${pageNumber}-${index}`}
               type="button"
-              className="pointer-events-auto absolute cursor-pointer border-0 p-0 mix-blend-multiply outline-offset-2 focus-visible:outline-2 focus-visible:outline-sophia-primary"
+              className="pointer-events-auto absolute cursor-pointer border-0 p-0 outline-offset-2 focus-visible:outline-2 focus-visible:outline-sophia-primary"
+              data-pdf-highlight-overlay
               style={style}
               aria-label={`Highlighted passage: ${highlight.text}`}
               aria-pressed={activeHighlightId === highlight.id}
@@ -89,8 +91,9 @@ export function PdfHighlightsOverlay({
       {previewRects.map((rect, index) => (
         <span
           key={`preview-${pageNumber}-${index}`}
-          className="absolute mix-blend-multiply"
+          className="absolute"
           data-highlight-preview="true"
+          data-pdf-highlight-overlay
           style={{
             left: rect.x * scale,
             top: rect.y * scale,

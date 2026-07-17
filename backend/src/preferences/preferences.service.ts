@@ -13,17 +13,20 @@ import {
   PDF_FIT_MODES,
   READER_MODES,
   READER_THEMES,
+  READING_MOODS,
   READING_FONT_FAMILIES,
   type PdfFitMode,
   type ReaderMode,
   type ReaderPreferences,
   type ReaderPreferencesUpdate,
   type ReaderTheme,
+  type ReadingMood,
   type ReadingFontFamily,
 } from "./preferences.types";
 
 const readerPreferenceSelect = {
   theme: true,
+  readingMood: true,
   readerMode: true,
   pdfFitMode: true,
   pdfZoom: true,
@@ -36,6 +39,7 @@ const readerPreferenceSelect = {
 
 type StoredReaderPreferences = {
   theme: string;
+  readingMood: string;
   readerMode: string;
   pdfFitMode: string;
   pdfZoom: number;
@@ -50,6 +54,12 @@ function normalizeReaderTheme(value: string): ReaderTheme {
   return READER_THEMES.includes(value as ReaderTheme)
     ? (value as ReaderTheme)
     : DEFAULT_READER_PREFERENCES.readerTheme;
+}
+
+function normalizeReadingMood(value: string): ReadingMood {
+  return READING_MOODS.includes(value as ReadingMood)
+    ? (value as ReadingMood)
+    : DEFAULT_READER_PREFERENCES.readingMood;
 }
 
 function normalizePdfFitMode(value: string): PdfFitMode {
@@ -105,6 +115,7 @@ function normalizeReadingContentWidth(value: number): number {
 function serializeReaderPreferences(value: StoredReaderPreferences): ReaderPreferences {
   return {
     readerTheme: normalizeReaderTheme(value.theme),
+    readingMood: normalizeReadingMood(value.readingMood),
     readerMode: normalizeReaderMode(value.readerMode),
     pdfFitMode: normalizePdfFitMode(value.pdfFitMode),
     pdfZoom: normalizePdfZoom(value.pdfZoom),
@@ -133,6 +144,7 @@ export async function updateReaderPreferences(
 ): Promise<ReaderPreferences> {
   const data = {
     ...(update.readerTheme === undefined ? {} : { theme: update.readerTheme }),
+    ...(update.readingMood === undefined ? {} : { readingMood: update.readingMood }),
     ...(update.readerMode === undefined ? {} : { readerMode: update.readerMode }),
     ...(update.pdfFitMode === undefined ? {} : { pdfFitMode: update.pdfFitMode }),
     ...(update.pdfZoom === undefined ? {} : { pdfZoom: update.pdfZoom }),

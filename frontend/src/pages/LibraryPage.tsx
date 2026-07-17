@@ -11,8 +11,9 @@ import {
   type ProcessingStatusBook,
 } from '../books'
 import { config } from '../config'
+import { useReaderPreferences } from '../features/reader/preferences'
 import { navigate } from '../routing/navigation'
-import { applyTheme, readStoredTheme, themes, type ThemeId } from '../theme'
+import { themes, type ThemeId } from '../theme'
 
 function formatDate(value: string): string {
   const date = new Date(value)
@@ -445,7 +446,11 @@ function MetadataEditDialog({
 
 export function LibraryPage() {
   const { logout, user } = useAuth()
-  const [theme, setTheme] = useState<ThemeId>(() => readStoredTheme())
+  const {
+    preferences: readerPreferences,
+    updatePreferences: updateReaderPreferences,
+  } = useReaderPreferences()
+  const theme = readerPreferences.readingMood
   const [books, setBooks] = useState<LibraryBook[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -481,9 +486,9 @@ export function LibraryPage() {
     return () => controller.abort()
   }, [])
 
-  useEffect(() => {
-    applyTheme(theme)
-  }, [theme])
+  function changeReadingMood(readingMood: ThemeId) {
+    updateReaderPreferences({ readingMood })
+  }
 
   async function handleLogout() {
     await logout()
@@ -650,7 +655,7 @@ export function LibraryPage() {
                     : 'border-transparent text-sophia-text-muted hover:border-sophia-border hover:bg-sophia-bg'
                 }`}
                 aria-pressed={theme === themeOption.id}
-                onClick={() => setTheme(themeOption.id)}
+                onClick={() => changeReadingMood(themeOption.id)}
               >
                 {themeOption.label}
               </button>

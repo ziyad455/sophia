@@ -48,10 +48,11 @@ import {
 } from '../features/reader/selection'
 import {
   ReaderPreferencesPanel,
-  getReaderThemeClass,
+  getReadingMoodClass,
   type ReaderMode,
   useReaderPreferences,
 } from '../features/reader/preferences'
+import { PdfReadingMoodFilters } from '../features/reader/preferences/PdfReadingMoodFilters'
 
 type ReaderPageProps = {
   userBookId: string
@@ -345,7 +346,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
       document.removeEventListener('pointerdown', handleOutsideSelectionPointer)
     }
   }, [clearSelection, selection, selectionError])
-  const readerThemeClass = getReaderThemeClass(preferences.readerTheme)
+  const readerMoodClass = getReadingMoodClass(preferences.readingMood)
   const viewerZoom: PDFViewerZoomLevel =
     preferences.pdfFitMode === 'custom'
       ? preferences.pdfZoom / 100
@@ -836,7 +837,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   // --- Loading state ---
   if (readerState.status === 'loading') {
     return (
-      <main className={`${readerThemeClass} flex h-svh flex-col bg-sophia-bg text-sophia-text`}>
+      <main className={`${readerMoodClass} flex h-svh flex-col bg-sophia-bg text-sophia-text`}>
         <div className="flex h-14 shrink-0 items-center border-b border-sophia-border bg-sophia-surface px-4">
           <p className="m-0 text-sm font-semibold text-sophia-text-muted">Sophia Reader</p>
         </div>
@@ -858,7 +859,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   // --- Error / Not Ready states ---
   if (readerState.status === 'error' || readerState.status === 'not-ready') {
     return (
-      <main className={`${readerThemeClass} flex h-svh flex-col bg-sophia-bg text-sophia-text`}>
+      <main className={`${readerMoodClass} flex h-svh flex-col bg-sophia-bg text-sophia-text`}>
         <div className="flex h-14 shrink-0 items-center border-b border-sophia-border bg-sophia-surface px-4">
           <button
             type="button"
@@ -913,7 +914,8 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const effectivePageCount = viewerPageCount ?? book.pageCount
 
   return (
-    <main className={`${readerThemeClass} flex h-svh flex-col overflow-hidden bg-sophia-bg text-sophia-text`}>
+    <main className={`${readerMoodClass} flex h-svh flex-col overflow-hidden bg-sophia-bg text-sophia-text`}>
+      <PdfReadingMoodFilters />
       {/* Reader header */}
       <ReaderHeader
         title={book.title}
@@ -936,7 +938,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
             loading={preferencesLoading}
             saving={preferencesSaving}
             error={preferencesError}
-            themeClassName={readerThemeClass}
+            moodClassName={readerMoodClass}
             onChange={updatePreferences}
             onReset={resetPreferences}
           />

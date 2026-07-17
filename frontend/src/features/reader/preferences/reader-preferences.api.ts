@@ -7,10 +7,16 @@ import type {
   ReaderPreferencesResponse,
   ReaderPreferencesUpdate,
   ReaderTheme,
+  ReadingMood,
   ReadingFontFamily,
 } from './reader-preferences.types'
 
 const readerThemes = new Set<ReaderTheme>(['system', 'light', 'dark'])
+const readingMoods = new Set<ReadingMood>([
+  'printed-ink',
+  'warm-paper',
+  'night-study',
+])
 const readerModes = new Set<ReaderMode>(['pdf', 'reading'])
 const pdfFitModes = new Set<PdfFitMode>(['fit-width', 'fit-page', 'custom'])
 const readingFontFamilies = new Set<ReadingFontFamily>(['serif', 'sans'])
@@ -47,6 +53,9 @@ function normalizePreferences(value: unknown): ReaderPreferences {
   const readerTheme = readerThemes.has(value.readerTheme as ReaderTheme)
     ? (value.readerTheme as ReaderTheme)
     : DEFAULT_READER_PREFERENCES.readerTheme
+  const readingMood = readingMoods.has(value.readingMood as ReadingMood)
+    ? (value.readingMood as ReadingMood)
+    : DEFAULT_READER_PREFERENCES.readingMood
   const readerMode = readerModes.has(value.readerMode as ReaderMode)
     ? (value.readerMode as ReaderMode)
     : DEFAULT_READER_PREFERENCES.readerMode
@@ -63,6 +72,7 @@ function normalizePreferences(value: unknown): ReaderPreferences {
 
   return {
     readerTheme,
+    readingMood,
     readerMode,
     pdfFitMode,
     pdfZoom,
