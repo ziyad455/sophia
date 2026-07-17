@@ -14,6 +14,7 @@ import { navigate } from '../routing/navigation'
 import {
   PDFViewer,
   type PDFViewerHandle,
+  type PDFViewerPageOverlayProps,
   type PDFViewerTextSelectionData,
   type PDFViewerZoomLevel,
 } from '../components/ui/pdf-viewer'
@@ -21,6 +22,15 @@ import { ReaderHeader } from '../features/reader/ReaderHeader'
 import { ReaderSidebar } from '../features/reader/ReaderSidebar'
 import { ReaderMobileChapters } from '../features/reader/ReaderMobileChapters'
 import { ReaderModeToggle } from '../features/reader/ReaderModeToggle'
+import {
+  HighlightsPanel,
+  HighlightsTrigger,
+  PdfHighlightsOverlay,
+  isStructurallyUnresolved,
+  useHighlights,
+  type HighlightColor,
+  type ReaderHighlight,
+} from '../features/reader/highlights'
 import {
   ReflowedReadingMode,
   type ReflowedReadingModeHandle,
@@ -104,6 +114,9 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [viewerPageCount, setViewerPageCount] = useState<number | null>(null)
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false)
+  const [highlightsPanelOpen, setHighlightsPanelOpen] = useState(false)
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null)
+  const [highlightNotice, setHighlightNotice] = useState<string | null>(null)
   const viewerRef = useRef<PDFViewerHandle>(null)
   const reflowedReaderRef = useRef<ReflowedReadingModeHandle>(null)
   const blobUrlRef = useRef<string | null>(null)
@@ -155,6 +168,90 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     bookId: selectionBookId,
     clearNativeSelection: clearNativeReaderSelection,
   })
+  const {
+    highlights,
+    loading: highlightsLoading,
+    loadError: highlightsLoadError,
+    mutationError: highlightMutationError,
+    saving: highlightSaving,
+    deletingIds: deletingHighlightIds,
+    createHighlight: saveHighlight,
+    deleteHighlight: removeHighlight,
+    refreshHighlights,
+    clearMutationError: clearHighlightMutationError,
+  } = useHighlights({
+    enabled: readerState.status === 'ready',
+    userBookId,
+  })
+
+  useEffect(() => {
+    if (!activeHighlightId) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => setActiveHighlightId(null), 2_000)
+
+    return () => window.clearTimeout(timeout)
+  }, [activeHighlightId])
+
+  useEffect(() => {
+    if (!highlightNotice) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => setHighlightNotice(null), 5_000)
+
+    return () => window.clearTimeout(timeout)
+  }, [highlightNotice])
+
+  const activateHighlight = useCallback((highlightId: string) => {
+    setActiveHighlightId(highlightId)
+  }, [])
+
+  const handleSaveHighlight = useCallback(async (color: HighlightColor) => {
+    if (!selection) {
+      return
+    }
+
+    clearHighlightMutationError()
+
+    try {
+      const savedHighlight = await saveHighlight(selection, color)
+
+      clearSelection()
+      setActiveHighlightId(savedHighlight.id)
+
+      if (isStructurallyUnresolved(savedHighlight)) {
+        setHighlightNotice(
+          'Highlight saved by page. This multi-paragraph passage remains available in Highlights.',
+        )
+      }
+    } catch {
+      // The hook exposes a calm retryable error and the selection remains intact.
+    }
+  }, [
+    clearHighlightMutationError,
+    clearSelection,
+    saveHighlight,
+    selection,
+  ])
+
+  const dismissSelectionToolbarError = useCallback(() => {
+    dismissSelectionError()
+    clearHighlightMutationError()
+  }, [clearHighlightMutationError, dismissSelectionError])
+
+  const renderPdfHighlights = useCallback(
+    (overlayProps: PDFViewerPageOverlayProps) => (
+      <PdfHighlightsOverlay
+        {...overlayProps}
+        highlights={highlights}
+        activeHighlightId={activeHighlightId}
+        onActivate={activateHighlight}
+      />
+    ),
+    [activateHighlight, activeHighlightId, highlights],
+  )
 
   useEffect(() => {
     if (!selection && !selectionError) {
@@ -612,6 +709,40 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     ],
   )
 
+  const handleNavigateHighlight = useCallback((highlight: ReaderHighlight) => {
+    clearSelection()
+    setActiveHighlightId(highlight.id)
+    setHighlightsPanelOpen(false)
+
+    if (preferences.readerMode === 'reading') {
+      const restored = reflowedReaderRef.current?.scrollToHighlight(
+        highlight.id,
+        highlight.sourceBlockId,
+        highlight.pageStart,
+      ) ?? false
+
+      if (!restored) {
+        setHighlightNotice('This highlight could not be located in the current reading view.')
+      }
+      return
+    }
+
+    viewerRef.current?.scrollToPage(highlight.pageStart)
+  }, [clearSelection, preferences.readerMode])
+
+  const handleDeleteHighlight = useCallback(async (highlightId: string) => {
+    await removeHighlight(highlightId)
+
+    if (activeHighlightId === highlightId) {
+      setActiveHighlightId(null)
+    }
+  }, [activeHighlightId, removeHighlight])
+
+  const handleRetryHighlights = useCallback(() => {
+    clearHighlightMutationError()
+    refreshHighlights()
+  }, [clearHighlightMutationError, refreshHighlights])
+
   function handleRetryPdf() {
     setViewerPageCount(null)
     setIsPdfPageRendered(false)
@@ -727,6 +858,13 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         currentChapterTitle={activeChapter?.title ?? null}
         hasChapters={hasChapters}
         onToggleChapters={toggleChapterDrawer}
+        actions={
+          <HighlightsTrigger
+            count={highlights.length}
+            hasError={Boolean(highlightsLoadError || highlightMutationError)}
+            onClick={() => setHighlightsPanelOpen(true)}
+          />
+        }
         settings={
           <ReaderPreferencesPanel
             preferences={preferences}
@@ -754,6 +892,15 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           role="status"
         >
           {progressSaveError ?? 'Your saved position could not be restored. Reading starts here.'}
+        </p>
+      ) : null}
+
+      {highlightNotice ? (
+        <p
+          className="m-0 shrink-0 border-b border-sophia-border bg-sophia-surface px-4 py-2 text-center text-xs text-sophia-text-muted"
+          role="status"
+        >
+          {highlightNotice}
         </p>
       ) : null}
 
@@ -843,6 +990,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
                   onPageRenderSuccess={handlePageRenderSuccess}
                   onTextSelectionChange={handlePdfTextSelectionChange}
                   onTextSelectionError={handlePdfTextSelectionError}
+                  renderPageOverlay={renderPdfHighlights}
                   onThumbnailSidebarOpenChange={handleThumbnailSidebarOpenChange}
                   thumbnailSidebarOpen={preferences.readerSidebarOpen}
                   className="h-full w-full"
@@ -888,7 +1036,10 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
                   content={readingContentState.data}
                   initialPage={currentPage}
                   preferences={preferences}
+                  highlights={highlights}
+                  activeHighlightId={activeHighlightId}
                   onActivePageChange={handleActivePageChange}
+                  onHighlightActivate={activateHighlight}
                   onSelectionCapture={captureSelection}
                 />
               ) : null}
@@ -940,11 +1091,27 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         onSelectChapter={handleSelectChapter}
       />
 
+      <HighlightsPanel
+        isOpen={highlightsPanelOpen}
+        highlights={highlights}
+        chapters={chapters}
+        activeHighlightId={activeHighlightId}
+        loading={highlightsLoading}
+        error={highlightsLoadError ?? highlightMutationError}
+        deletingIds={deletingHighlightIds}
+        onClose={() => setHighlightsPanelOpen(false)}
+        onRetry={handleRetryHighlights}
+        onNavigate={handleNavigateHighlight}
+        onDelete={handleDeleteHighlight}
+      />
+
       <ReaderSelectionToolbar
         selection={selection}
-        error={selectionError}
+        error={selectionError ?? (selection ? highlightMutationError : null)}
+        saving={highlightSaving}
+        onHighlight={handleSaveHighlight}
         onClear={clearSelection}
-        onDismissError={dismissSelectionError}
+        onDismissError={dismissSelectionToolbarError}
       />
     </main>
   )

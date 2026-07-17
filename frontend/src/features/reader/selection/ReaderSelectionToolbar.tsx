@@ -1,11 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, PointerEvent } from 'react'
-import { X } from 'lucide-react'
+import { Highlighter, LoaderCircle, X } from 'lucide-react'
+import type { HighlightColor } from '../highlights'
+import { HIGHLIGHT_COLORS } from '../highlights/highlight.types'
 import type { ReaderSelection } from './reader-selection.types'
 
 type ReaderSelectionToolbarProps = {
   selection: ReaderSelection | null
   error: string | null
+  saving: boolean
+  onHighlight: (color: HighlightColor) => void | Promise<void>
   onClear: () => void
   onDismissError: () => void
 }
@@ -15,8 +19,8 @@ type ToolbarStyle = CSSProperties & {
   '--selection-toolbar-top'?: string
 }
 
-const TOOLBAR_WIDTH = 208
-const TOOLBAR_HEIGHT = 44
+const TOOLBAR_WIDTH = 336
+const TOOLBAR_HEIGHT = 48
 const VIEWPORT_PADDING = 12
 const HEADER_CLEARANCE = 112
 
@@ -74,9 +78,17 @@ function getSelectionLabel(selection: ReaderSelection): string {
 export function ReaderSelectionToolbar({
   selection,
   error,
+  saving,
+  onHighlight,
   onClear,
   onDismissError,
 }: ReaderSelectionToolbarProps) {
+  const [color, setColor] = useState<HighlightColor>('gold')
+
+  useEffect(() => {
+    setColor('gold')
+  }, [selection?.createdAt])
+
   useEffect(() => {
     if (!selection && !error) {
       return
@@ -128,13 +140,55 @@ export function ReaderSelectionToolbar({
 
   return (
     <div
-      className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 flex h-11 w-[208px] -translate-x-1/2 items-center justify-between gap-3 rounded-lg border border-sophia-border bg-sophia-surface px-3 text-sm text-sophia-text shadow-lg sm:data-[position=floating]:bottom-auto sm:data-[position=floating]:left-[var(--selection-toolbar-left)] sm:data-[position=floating]:top-[var(--selection-toolbar-top)] sm:data-[position=floating]:translate-x-0"
+      className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 flex h-12 w-[min(94vw,336px)] -translate-x-1/2 items-center gap-1.5 rounded-lg border border-sophia-border bg-sophia-surface px-2 text-sm text-sophia-text shadow-lg sm:data-[position=floating]:bottom-auto sm:data-[position=floating]:left-[var(--selection-toolbar-left)] sm:data-[position=floating]:top-[var(--selection-toolbar-top)] sm:data-[position=floating]:w-[336px] sm:data-[position=floating]:translate-x-0"
       data-position={placement.position}
       data-reader-selection-toolbar
       onPointerDown={preserveMouseSelection}
       style={placement.style}
     >
-      <span className="truncate font-medium">{getSelectionLabel(selection)}</span>
+      <span className="sr-only">{getSelectionLabel(selection)}</span>
+      <div className="flex items-center gap-1" aria-label="Highlight color">
+        {HIGHLIGHT_COLORS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`grid h-9 w-9 place-items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary ${color === option ? 'bg-sophia-bg ring-1 ring-sophia-border' : 'hover:bg-sophia-bg'}`}
+            onClick={() => setColor(option)}
+            disabled={saving}
+            aria-label={`Use ${option} highlight`}
+            aria-pressed={color === option}
+            title={`${option[0].toUpperCase()}${option.slice(1)}`}
+          >
+            <span
+              className={`h-4 w-4 rounded-[2px] border border-black/10 ${
+                option === 'gold'
+                  ? 'bg-amber-300'
+                  : option === 'blue'
+                    ? 'bg-sky-300'
+                    : option === 'green'
+                      ? 'bg-emerald-300'
+                      : 'bg-rose-300'
+              }`}
+              aria-hidden="true"
+            />
+          </button>
+        ))}
+      </div>
+      <span className="h-6 w-px bg-sophia-border" aria-hidden="true" />
+      <button
+        type="button"
+        className="inline-flex h-9 min-w-20 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold text-sophia-text hover:bg-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary disabled:cursor-wait disabled:opacity-60"
+        onClick={() => void onHighlight(color)}
+        disabled={saving}
+        aria-label={saving ? 'Saving highlight' : 'Save highlight'}
+      >
+        {saving ? (
+          <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <Highlighter className="h-4 w-4" aria-hidden="true" />
+        )}
+        {saving ? 'Saving' : 'Highlight'}
+      </button>
       <button
         type="button"
         className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-sophia-text-muted hover:bg-sophia-bg hover:text-sophia-text focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"

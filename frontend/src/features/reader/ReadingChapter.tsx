@@ -1,11 +1,20 @@
+import type { ReaderHighlight } from './highlights'
 import type { ReflowedReadingPage } from './reader-content.utils'
 import { ReadingParagraph } from './ReadingParagraph'
 
 type ReadingChapterProps = {
   page: ReflowedReadingPage
+  highlights: ReaderHighlight[]
+  activeHighlightId: string | null
+  onHighlightActivate: (highlightId: string) => void
 }
 
-export function ReadingChapter({ page }: ReadingChapterProps) {
+export function ReadingChapter({
+  page,
+  highlights,
+  activeHighlightId,
+  onHighlightActivate,
+}: ReadingChapterProps) {
   const chapterTitle = page.chapter
     ? page.chapter.title ?? `Chapter ${page.chapterNumber ?? ''}`.trim()
     : null
@@ -43,6 +52,11 @@ export function ReadingChapter({ page }: ReadingChapterProps) {
       {page.paragraphs.length > 0 ? (
         page.paragraphs.map((paragraph, index) => {
           const sourceBlockId = `${page.id}:paragraph:${index}`
+          const blockHighlights = highlights.filter(
+            (highlight) =>
+              highlight.mode === 'reading' &&
+              highlight.sourceBlockId === sourceBlockId,
+          )
 
           return (
             <ReadingParagraph
@@ -51,6 +65,9 @@ export function ReadingChapter({ page }: ReadingChapterProps) {
               sourceBlockId={sourceBlockId}
               pageNumber={page.pageNumber}
               chapterId={page.chapter?.id ?? null}
+              highlights={blockHighlights}
+              activeHighlightId={activeHighlightId}
+              onHighlightActivate={onHighlightActivate}
             />
           )
         })
