@@ -1,8 +1,14 @@
+import type { ReaderHighlight } from './highlights'
+import { ReadingHighlightRenderer } from './highlights'
+
 type ReadingParagraphProps = {
   text: string
   sourceBlockId: string
   pageNumber: number
   chapterId: string | null
+  highlights: ReaderHighlight[]
+  activeHighlightId: string | null
+  onHighlightActivate: (highlightId: string) => void
 }
 
 export function ReadingParagraph({
@@ -10,6 +16,9 @@ export function ReadingParagraph({
   sourceBlockId,
   pageNumber,
   chapterId,
+  highlights,
+  activeHighlightId,
+  onHighlightActivate,
 }: ReadingParagraphProps) {
   return (
     <p
@@ -19,7 +28,12 @@ export function ReadingParagraph({
       data-source-page={pageNumber}
       data-source-chapter={chapterId ?? undefined}
     >
-      {text}
+      <ReadingHighlightRenderer
+        text={text}
+        highlights={highlights}
+        activeHighlightId={activeHighlightId}
+        onActivate={onHighlightActivate}
+      />
     </p>
   )
 }

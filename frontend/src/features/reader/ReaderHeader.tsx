@@ -9,6 +9,7 @@ type ReaderHeaderProps = {
   currentChapterTitle: string | null
   hasChapters: boolean
   onToggleChapters: () => void
+  actions?: ReactNode
   settings?: ReactNode
 }
 
@@ -20,6 +21,7 @@ export function ReaderHeader({
   currentChapterTitle,
   hasChapters,
   onToggleChapters,
+  actions,
   settings,
 }: ReaderHeaderProps) {
   function goToLibrary() {
@@ -85,6 +87,7 @@ export function ReaderHeader({
         {statusText}
       </p>
 
+      {actions}
       {settings}
 
       {/* Chapter toggle for mobile/tablet — only when chapters exist */}

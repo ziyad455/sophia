@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { CSSProperties } from 'react'
 import type { ReadingContentResponse } from '../../books'
+import type { ReaderHighlight } from './highlights'
 import type { ReaderPreferences } from './preferences'
 import { buildReflowedReadingPages } from './reader-content.utils'
 import { ReadingChapter } from './ReadingChapter'
@@ -16,6 +17,11 @@ import type { ReaderSelectionCaptureResult } from './selection'
 
 export type ReflowedReadingModeHandle = {
   scrollToPage: (pageNumber: number, behavior?: ScrollBehavior) => void
+  scrollToHighlight: (
+    highlightId: string,
+    sourceBlockId: string | null,
+    pageNumber: number,
+  ) => boolean
 }
 
 type ReflowedReadingModeProps = {
@@ -24,6 +30,9 @@ type ReflowedReadingModeProps = {
   preferences: ReaderPreferences
   onActivePageChange: (pageNumber: number) => void
   onSelectionCapture: (result: ReaderSelectionCaptureResult) => void
+  highlights: ReaderHighlight[]
+  activeHighlightId: string | null
+  onHighlightActivate: (highlightId: string) => void
 }
 
 const serifStack = "Iowan Old Style, Palatino Linotype, Book Antiqua, Georgia, serif"
@@ -39,6 +48,9 @@ export const ReflowedReadingMode = forwardRef<
     preferences,
     onActivePageChange,
     onSelectionCapture,
+    highlights,
+    activeHighlightId,
+    onHighlightActivate,
   },
   ref,
 ) {
@@ -86,7 +98,49 @@ export const ReflowedReadingMode = forwardRef<
     })
   }, [])
 
-  useImperativeHandle(ref, () => ({ scrollToPage }), [scrollToPage])
+  const scrollToHighlight = useCallback((
+    highlightId: string,
+    sourceBlockId: string | null,
+    pageNumber: number,
+  ): boolean => {
+    const container = scrollContainerRef.current
+
+    if (!container) {
+      return false
+    }
+
+    const mark = [...container.querySelectorAll<HTMLElement>('[data-highlight-id]')]
+      .find((candidate) => candidate.dataset.highlightId === highlightId)
+    const sourceBlock = sourceBlockId
+      ? [...container.querySelectorAll<HTMLElement>('[data-source-block-id]')]
+          .find((candidate) => candidate.dataset.sourceBlockId === sourceBlockId)
+      : null
+    const target = mark ?? sourceBlock
+
+    if (!target) {
+      scrollToPage(pageNumber)
+      return false
+    }
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    target.scrollIntoView({
+      block: 'center',
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    })
+
+    if (mark) {
+      window.requestAnimationFrame(() => mark.focus({ preventScroll: true }))
+    }
+
+    return Boolean(mark)
+  }, [scrollToPage])
+
+  useImperativeHandle(
+    ref,
+    () => ({ scrollToPage, scrollToHighlight }),
+    [scrollToHighlight, scrollToPage],
+  )
 
   useEffect(() => {
     didSetInitialPageRef.current = false
@@ -184,7 +238,13 @@ export const ReflowedReadingMode = forwardRef<
       >
         <h1 className="sr-only">{content.book.title}</h1>
         {pages.map((page) => (
-          <ReadingChapter key={page.id} page={page} />
+          <ReadingChapter
+            key={page.id}
+            page={page}
+            highlights={highlights}
+            activeHighlightId={activeHighlightId}
+            onHighlightActivate={onHighlightActivate}
+          />
         ))}
       </article>
       <ReadingModeSelectionController
