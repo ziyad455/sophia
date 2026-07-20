@@ -416,8 +416,11 @@ model Note {
   bookId      String    @map("book_id") @db.Uuid
   chapterId   String?   @map("chapter_id") @db.Uuid
   pageNumber  Int?      @map("page_number")
+  pageEnd     Int?      @map("page_end")
   chunkId     String?   @map("chunk_id") @db.Uuid
   highlightId String?   @map("highlight_id") @db.Uuid
+  quote       String?   @db.Text
+  anchor      Json?
   content     String    @db.Text
   noteType    NoteType  @default(MARGIN_NOTE) @map("note_type")
   createdAt   DateTime  @default(now()) @map("created_at")

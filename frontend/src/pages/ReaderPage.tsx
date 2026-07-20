@@ -35,6 +35,17 @@ import {
   type ReaderHighlight,
 } from '../features/reader/highlights'
 import {
+  AddNoteMenu,
+  HighlightNoteActions,
+  NoteEditor,
+  NotesPanel,
+  highlightSource,
+  passageSourceFromSelection,
+  useNotes,
+  type NoteEditorState,
+  type ReaderNote,
+} from '../features/reader/notes'
+import {
   ReflowedReadingMode,
   type ReflowedReadingModeHandle,
 } from '../features/reader/ReflowedReadingMode'
@@ -147,7 +158,14 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [viewerPageCount, setViewerPageCount] = useState<number | null>(null)
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false)
   const [highlightsPanelOpen, setHighlightsPanelOpen] = useState(false)
+  const [notesPanelOpen, setNotesPanelOpen] = useState(false)
+  const [notesPanelInitialNoteId, setNotesPanelInitialNoteId] =
+    useState<string | null>(null)
+  const [noteEditorState, setNoteEditorState] =
+    useState<NoteEditorState | null>(null)
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null)
+  const [activeHighlightActionId, setActiveHighlightActionId] =
+    useState<string | null>(null)
   const [highlightNotice, setHighlightNotice] = useState<string | null>(null)
   const [previewColor, setPreviewColor] = useState<HighlightColor>('gold')
   const viewerRef = useRef<PDFViewerHandle>(null)
@@ -264,6 +282,30 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     enabled: readerState.status === 'ready',
     userBookId,
   })
+  const {
+    notes,
+    loading: notesLoading,
+    loadError: notesLoadError,
+    mutationError: noteMutationError,
+    saving: noteSaving,
+    updatingIds: updatingNoteIds,
+    deletingIds: deletingNoteIds,
+    createNote: saveNote,
+    updateNote: saveNoteUpdate,
+    deleteNote: removeNote,
+    refreshNotes,
+    clearMutationError: clearNoteMutationError,
+    notesForHighlight,
+  } = useNotes({
+    enabled: readerState.status === 'ready',
+    userBookId,
+  })
+  const activeActionHighlight = activeHighlightActionId
+    ? highlights.find((highlight) => highlight.id === activeHighlightActionId) ?? null
+    : null
+  const noteEditorSaving = noteEditorState?.mode === 'edit'
+    ? updatingNoteIds.has(noteEditorState.note.id)
+    : noteSaving
 
   useEffect(() => {
     if (!activeHighlightId) {
@@ -297,6 +339,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
   const activateHighlight = useCallback((highlightId: string) => {
     setActiveHighlightId(highlightId)
+    setActiveHighlightActionId(highlightId)
   }, [])
 
   const handleSaveHighlight = useCallback(async () => {
@@ -328,6 +371,30 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     clearSelection,
     highlightPreview,
     saveHighlight,
+  ])
+
+  const handleAddSelectionNote = useCallback(() => {
+    if (!selection) {
+      return
+    }
+
+    const source = passageSourceFromSelection(selection)
+
+    if (!source) {
+      reportSelectionError(
+        'This passage does not have a reliable source page. Select it again in the original PDF.',
+      )
+      return
+    }
+
+    setNoteEditorState({ mode: 'create', source })
+    clearNoteMutationError()
+    clearSelection()
+  }, [
+    clearNoteMutationError,
+    clearSelection,
+    reportSelectionError,
+    selection,
   ])
 
   const dismissSelectionToolbarError = useCallback(() => {
@@ -827,16 +894,168 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
   const handleDeleteHighlight = useCallback(async (highlightId: string) => {
     await removeHighlight(highlightId)
+    refreshNotes()
 
     if (activeHighlightId === highlightId) {
       setActiveHighlightId(null)
     }
-  }, [activeHighlightId, removeHighlight])
+
+    if (activeHighlightActionId === highlightId) {
+      setActiveHighlightActionId(null)
+    }
+  }, [
+    activeHighlightActionId,
+    activeHighlightId,
+    refreshNotes,
+    removeHighlight,
+  ])
 
   const handleRetryHighlights = useCallback(() => {
     clearHighlightMutationError()
     refreshHighlights()
   }, [clearHighlightMutationError, refreshHighlights])
+
+  const openNotesPanel = useCallback((initialNoteId: string | null = null) => {
+    setHighlightsPanelOpen(false)
+    setActiveHighlightActionId(null)
+    setNotesPanelInitialNoteId(initialNoteId)
+    setNotesPanelOpen(true)
+  }, [])
+
+  const closeNotesPanel = useCallback(() => {
+    setNotesPanelOpen(false)
+    setNotesPanelInitialNoteId(null)
+  }, [])
+
+  const closeNoteEditor = useCallback(() => {
+    setNoteEditorState(null)
+    clearNoteMutationError()
+  }, [clearNoteMutationError])
+
+  const closeHighlightActions = useCallback(() => {
+    setActiveHighlightActionId(null)
+  }, [])
+
+  const handleAddPageNote = useCallback(() => {
+    clearNoteMutationError()
+    setNoteEditorState({
+      mode: 'create',
+      source: { kind: 'page', pageNumber: currentPage },
+    })
+  }, [clearNoteMutationError, currentPage])
+
+  const handleAddChapterNote = useCallback(() => {
+    const chapter = findChapterForPage(readerChapters, currentPage)
+
+    if (!chapter) {
+      return
+    }
+
+    clearNoteMutationError()
+    setNoteEditorState({
+      mode: 'create',
+      source: {
+        kind: 'chapter',
+        chapterId: chapter.id,
+        chapterTitle: chapter.title,
+        pageStart: chapter.pageStart,
+      },
+    })
+  }, [clearNoteMutationError, currentPage, readerChapters])
+
+  const handleAddBookNote = useCallback(() => {
+    clearNoteMutationError()
+    setNoteEditorState({ mode: 'create', source: { kind: 'book' } })
+  }, [clearNoteMutationError])
+
+  const handleAddHighlightNote = useCallback(() => {
+    if (!activeActionHighlight) {
+      return
+    }
+
+    clearNoteMutationError()
+    setActiveHighlightActionId(null)
+    setNoteEditorState({
+      mode: 'create',
+      source: highlightSource(activeActionHighlight, readerChapters),
+    })
+  }, [activeActionHighlight, clearNoteMutationError, readerChapters])
+
+  const handleOpenHighlightNotes = useCallback(() => {
+    if (!activeActionHighlight) {
+      return
+    }
+
+    const firstNote = notesForHighlight(activeActionHighlight.id)[0]
+
+    openNotesPanel(firstNote?.id ?? null)
+  }, [activeActionHighlight, notesForHighlight, openNotesPanel])
+
+  const handleSaveNote = useCallback(async (content: string) => {
+    if (!noteEditorState) {
+      return
+    }
+
+    clearNoteMutationError()
+
+    if (noteEditorState.mode === 'create') {
+      await saveNote({ content, source: noteEditorState.source })
+    } else {
+      await saveNoteUpdate(noteEditorState.note.id, content)
+    }
+
+    setNoteEditorState(null)
+  }, [
+    clearNoteMutationError,
+    noteEditorState,
+    saveNote,
+    saveNoteUpdate,
+  ])
+
+  const handleEditNote = useCallback((note: ReaderNote) => {
+    clearNoteMutationError()
+    setNoteEditorState({ mode: 'edit', note })
+  }, [clearNoteMutationError])
+
+  const handleDeleteNote = useCallback(async (noteId: string) => {
+    await removeNote(noteId)
+  }, [removeNote])
+
+  const handleRetryNotes = useCallback(() => {
+    clearNoteMutationError()
+    refreshNotes()
+  }, [clearNoteMutationError, refreshNotes])
+
+  const handleNavigateNote = useCallback((note: ReaderNote) => {
+    const linkedHighlight = note.highlightId
+      ? highlights.find((highlight) => highlight.id === note.highlightId) ?? null
+      : null
+
+    closeNotesPanel()
+    clearSelection()
+    setActiveHighlightActionId(null)
+
+    if (linkedHighlight) {
+      handleNavigateHighlight(linkedHighlight)
+      return
+    }
+
+    if (note.pageStart === null) {
+      return
+    }
+
+    if (preferences.readerMode === 'reading') {
+      reflowedReaderRef.current?.scrollToPage(note.pageStart)
+    } else {
+      viewerRef.current?.scrollToPage(note.pageStart)
+    }
+  }, [
+    clearSelection,
+    closeNotesPanel,
+    handleNavigateHighlight,
+    highlights,
+    preferences.readerMode,
+  ])
 
   function handleRetryPdf() {
     setViewerPageCount(null)
@@ -962,10 +1181,23 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           onToggleChapters={toggleChapterDrawer}
           actions={
             <>
+              <AddNoteMenu
+                count={notes.length}
+                hasError={Boolean(notesLoadError || noteMutationError)}
+                currentPage={currentPage}
+                currentChapter={activeChapter}
+                onAddPage={handleAddPageNote}
+                onAddChapter={handleAddChapterNote}
+                onAddBook={handleAddBookNote}
+                onOpenNotes={() => openNotesPanel()}
+              />
               <HighlightsTrigger
                 count={highlights.length}
                 hasError={Boolean(highlightsLoadError || highlightMutationError)}
-                onClick={() => setHighlightsPanelOpen(true)}
+                onClick={() => {
+                  closeNotesPanel()
+                  setHighlightsPanelOpen(true)
+                }}
               />
               {fullscreenSupported && !isFullscreen ? (
                 <ReaderFullscreenToggle
@@ -986,6 +1218,22 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
             />
           }
         />
+
+        {isFullscreen ? (
+          <div className="fixed right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-40">
+            <AddNoteMenu
+              count={notes.length}
+              hasError={Boolean(notesLoadError || noteMutationError)}
+              currentPage={currentPage}
+              currentChapter={activeChapter}
+              triggerClassName="border border-sophia-border bg-sophia-surface shadow-lg"
+              onAddPage={handleAddPageNote}
+              onAddChapter={handleAddChapterNote}
+              onAddBook={handleAddBookNote}
+              onOpenNotes={() => openNotesPanel()}
+            />
+          </div>
+        ) : null}
 
         <div
           className="flex shrink-0 justify-center border-b border-sophia-border bg-sophia-surface px-3 py-2"
@@ -1230,6 +1478,39 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           onDelete={handleDeleteHighlight}
         />
 
+        <NotesPanel
+          isOpen={notesPanelOpen}
+          notes={notes}
+          initialNoteId={notesPanelInitialNoteId}
+          loading={notesLoading}
+          error={notesLoadError ?? noteMutationError}
+          deletingIds={deletingNoteIds}
+          onClose={closeNotesPanel}
+          onRetry={handleRetryNotes}
+          onNavigate={handleNavigateNote}
+          onEdit={handleEditNote}
+          onDelete={handleDeleteNote}
+        />
+
+        {activeActionHighlight ? (
+          <HighlightNoteActions
+            highlight={activeActionHighlight}
+            noteCount={notesForHighlight(activeActionHighlight.id).length}
+            onAddNote={handleAddHighlightNote}
+            onOpenNotes={handleOpenHighlightNotes}
+            onClose={closeHighlightActions}
+          />
+        ) : null}
+
+        {noteEditorState ? (
+          <NoteEditor
+            state={noteEditorState}
+            saving={noteEditorSaving}
+            onSave={handleSaveNote}
+            onClose={closeNoteEditor}
+          />
+        ) : null}
+
         <ReaderSelectionToolbar
           selection={selection}
           error={selectionError ?? (selection ? highlightMutationError : null)}
@@ -1237,6 +1518,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           color={previewColor}
           onColorChange={setPreviewColor}
           onHighlight={handleSaveHighlight}
+          onAddNote={handleAddSelectionNote}
           onClear={clearSelection}
           onDismissError={dismissSelectionToolbarError}
         />

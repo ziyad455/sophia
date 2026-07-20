@@ -237,19 +237,55 @@ export async function deleteUserHighlight(
     throw notFound("Highlight not found.");
   }
 
-  const result = await prisma.highlight.updateMany({
+  const highlight = await prisma.highlight.findFirst({
     where: {
       id: highlightId,
       userId,
       userBookId,
       deletedAt: null,
     },
-    data: {
-      deletedAt: new Date(),
+    select: {
+      id: true,
+      selectedText: true,
+      pageStart: true,
+      pageEnd: true,
+      chapterId: true,
+      anchor: true,
     },
   });
 
-  if (result.count !== 1) {
+  if (!highlight) {
     throw notFound("Highlight not found.");
   }
+
+  const deletedAt = new Date();
+  // A deleted highlight becomes an ordinary passage source; never cascade-delete
+  // the user's private note content.
+
+  await prisma.$transaction([
+    prisma.note.updateMany({
+      where: {
+        userId,
+        userBookId,
+        highlightId: highlight.id,
+        deletedAt: null,
+      },
+      data: {
+        highlightId: null,
+        quote: highlight.selectedText,
+        pageNumber: highlight.pageStart,
+        pageEnd: highlight.pageEnd,
+        chapterId: highlight.chapterId,
+        anchor: highlight.anchor as Prisma.InputJsonValue,
+      },
+    }),
+    prisma.highlight.update({
+      where: {
+        id: highlight.id,
+      },
+      data: {
+        deletedAt,
+      },
+    }),
+  ]);
 }

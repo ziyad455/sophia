@@ -5,6 +5,7 @@ import { createAuthRouter } from "./auth/auth.routes";
 import { createBooksRouter } from "./books/books.routes";
 import { HttpError } from "./http/errors";
 import { createHighlightsRouter } from "./highlights/highlights.routes";
+import { createNotesRouter } from "./notes/notes.routes";
 import { createPreferencesRouter } from "./preferences/preferences.routes";
 import { createProcessingRouter } from "./processing/processing.routes";
 
@@ -57,6 +58,7 @@ export function createApp() {
   app.use("/auth", createAuthRouter());
   app.use("/books", createProcessingRouter());
   app.use("/books", createHighlightsRouter());
+  app.use("/books", createNotesRouter());
   app.use("/books", createBooksRouter());
   app.use("/preferences", createPreferencesRouter());
 

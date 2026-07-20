@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { CSSProperties, PointerEvent } from 'react'
-import { Highlighter, LoaderCircle, X } from 'lucide-react'
+import { Highlighter, LoaderCircle, NotebookPen, X } from 'lucide-react'
 import type { HighlightColor } from '../highlights'
 import { HIGHLIGHT_COLORS } from '../highlights/highlight.types'
 import type { ReaderSelection } from './reader-selection.types'
@@ -12,6 +12,7 @@ type ReaderSelectionToolbarProps = {
   color: HighlightColor
   onColorChange: (color: HighlightColor) => void
   onHighlight: () => void | Promise<void>
+  onAddNote: () => void
   onClear: () => void
   onDismissError: () => void
 }
@@ -21,7 +22,7 @@ type ToolbarStyle = CSSProperties & {
   '--selection-toolbar-top'?: string
 }
 
-const TOOLBAR_WIDTH = 336
+const TOOLBAR_WIDTH = 420
 const TOOLBAR_HEIGHT = 48
 const VIEWPORT_PADDING = 12
 const HEADER_CLEARANCE = 112
@@ -84,6 +85,7 @@ export function ReaderSelectionToolbar({
   color,
   onColorChange,
   onHighlight,
+  onAddNote,
   onClear,
   onDismissError,
 }: ReaderSelectionToolbarProps) {
@@ -138,7 +140,7 @@ export function ReaderSelectionToolbar({
 
   return (
     <div
-      className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 flex h-12 w-[min(94vw,336px)] -translate-x-1/2 items-center gap-1.5 rounded-lg border border-sophia-border bg-sophia-surface px-2 text-sm text-sophia-text shadow-lg sm:data-[position=floating]:bottom-auto sm:data-[position=floating]:left-[var(--selection-toolbar-left)] sm:data-[position=floating]:top-[var(--selection-toolbar-top)] sm:data-[position=floating]:w-[336px] sm:data-[position=floating]:translate-x-0"
+      className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-1/2 z-50 flex h-12 w-[min(94vw,420px)] -translate-x-1/2 items-center gap-1.5 rounded-lg border border-sophia-border bg-sophia-surface px-2 text-sm text-sophia-text shadow-lg sm:data-[position=floating]:bottom-auto sm:data-[position=floating]:left-[var(--selection-toolbar-left)] sm:data-[position=floating]:top-[var(--selection-toolbar-top)] sm:data-[position=floating]:w-[420px] sm:data-[position=floating]:translate-x-0"
       data-position={placement.position}
       data-reader-selection-toolbar
       onPointerDown={preserveMouseSelection}
@@ -175,7 +177,7 @@ export function ReaderSelectionToolbar({
       <span className="h-6 w-px bg-sophia-border" aria-hidden="true" />
       <button
         type="button"
-        className="inline-flex h-9 min-w-20 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold text-sophia-text hover:bg-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary disabled:cursor-wait disabled:opacity-60"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1.5 rounded-md text-xs font-semibold text-sophia-text hover:bg-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary disabled:cursor-wait disabled:opacity-60 min-[400px]:w-auto min-[400px]:min-w-20 min-[400px]:px-2"
         onClick={() => void onHighlight()}
         disabled={saving}
         aria-label={saving ? 'Saving highlight' : 'Save highlight'}
@@ -185,7 +187,19 @@ export function ReaderSelectionToolbar({
         ) : (
           <Highlighter className="h-4 w-4" aria-hidden="true" />
         )}
-        {saving ? 'Saving' : 'Highlight'}
+        <span className="hidden min-[400px]:inline">
+          {saving ? 'Saving' : 'Highlight'}
+        </span>
+      </button>
+      <button
+        type="button"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1.5 rounded-md text-xs font-semibold text-sophia-text hover:bg-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary disabled:opacity-60 min-[400px]:w-auto min-[400px]:min-w-20 min-[400px]:px-2"
+        onClick={onAddNote}
+        disabled={saving}
+        aria-label="Add note about selected passage"
+      >
+        <NotebookPen className="h-4 w-4" aria-hidden="true" />
+        <span className="hidden min-[400px]:inline">Add note</span>
       </button>
       <button
         type="button"
