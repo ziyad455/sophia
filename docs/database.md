@@ -544,7 +544,8 @@ Constraints:
 
 ### reading_sessions
 
-Stores reading history.
+Stores private, active-reading history. Reading progress remains the source of
+the resume position; a session is one historical reading period.
 
 Recommended fields:
 - id
@@ -560,8 +561,21 @@ Recommended fields:
 - pagesRead
 - metadata
 
+S6-T4 runtime policy:
+- The client sends total accumulated active seconds, never wall-clock duration.
+- Duration is monotonic, and a sequence number prevents older requests from
+  replacing a newer final page, chapter, or reader mode.
+- The current schema's metadata stores a versioned reader mode, start/end
+  chapter IDs, server update time, and update sequence. Raw activity events are
+  never stored.
+- pagesRead remains null because start/end page deltas do not reliably
+  represent pages read.
+- A fresh unfinished session is reused. After 30 minutes without a stored
+  update, it is ended at its last recorded update time and a new session starts.
+- Ending is idempotent and cannot move an already-ended session's final
+  position or reduce its duration.
+
 This supports:
-- resume reading
 - reading streaks later
 - session-based reflection
 - long-term memory extraction

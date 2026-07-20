@@ -8,6 +8,7 @@ import { createHighlightsRouter } from "./highlights/highlights.routes";
 import { createNotesRouter } from "./notes/notes.routes";
 import { createPreferencesRouter } from "./preferences/preferences.routes";
 import { createProcessingRouter } from "./processing/processing.routes";
+import { createReadingSessionsRouter } from "./reading-sessions/reading-sessions.routes";
 
 const express = require("express");
 
@@ -59,6 +60,7 @@ export function createApp() {
   app.use("/books", createProcessingRouter());
   app.use("/books", createHighlightsRouter());
   app.use("/books", createNotesRouter());
+  app.use("/books", createReadingSessionsRouter());
   app.use("/books", createBooksRouter());
   app.use("/preferences", createPreferencesRouter());
 
