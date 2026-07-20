@@ -52,6 +52,7 @@ import {
 import { findChapterForPage, sortChapters } from '../features/reader/reader.utils'
 import type { ReaderState } from '../features/reader/reader.types'
 import { useReadingProgress } from '../features/reader/use-reading-progress'
+import { useReadingSession } from '../features/reader/sessions'
 import { useReaderFullscreen } from '../features/reader/use-reader-fullscreen'
 import {
   ReaderSelectionToolbar,
@@ -255,6 +256,28 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     enterFullscreen,
   } = useReaderFullscreen({
     onFullscreenChange: handleFullscreenChange,
+  })
+  const currentSessionChapterId = findChapterForPage(
+    readerChapters,
+    currentPage,
+  )?.id ?? null
+  const activeReadingSurfaceReady = preferences.readerMode === 'pdf'
+    ? pdfState.status === 'ready' && isPdfPageRendered
+    : readingContentState.status === 'ready'
+  const sessionCanStart =
+    readerState.status === 'ready' &&
+    !preferencesLoading &&
+    readerElement !== null &&
+    activeReadingSurfaceReady
+  const {
+    error: readingSessionError,
+  } = useReadingSession({
+    canStart: sessionCanStart,
+    userBookId,
+    currentPage,
+    currentChapterId: currentSessionChapterId,
+    readerMode: preferences.readerMode,
+    readerElement,
   })
   const reportSelectionError = useCallback((message: string) => {
     previewSelectionKeyRef.current = null
@@ -1252,6 +1275,15 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
             role="status"
           >
             {progressSaveError ?? 'Your saved position could not be restored. Reading starts here.'}
+          </p>
+        ) : null}
+
+        {readingSessionError ? (
+          <p
+            className="m-0 shrink-0 border-b border-sophia-border bg-sophia-surface px-4 py-2 text-center text-xs text-sophia-text-muted"
+            role="status"
+          >
+            {readingSessionError}
           </p>
         ) : null}
 
