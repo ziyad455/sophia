@@ -81,7 +81,7 @@ export function useReaderFullscreen({
     }
   }, [readerElement])
 
-  const toggleFullscreen = useCallback(async () => {
+  const enterFullscreen = useCallback(async () => {
     if (!readerElement || !isSupported) {
       return
     }
@@ -90,7 +90,6 @@ export function useReaderFullscreen({
 
     try {
       if (document.fullscreenElement === readerElement) {
-        await document.exitFullscreen()
         return
       }
 
@@ -119,6 +118,6 @@ export function useReaderFullscreen({
     isFullscreen,
     error,
     clearError,
-    toggleFullscreen,
+    enterFullscreen,
   }
 }

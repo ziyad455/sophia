@@ -42,7 +42,10 @@ export function ReaderHeader({
   const statusText = statusParts.join(' · ')
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-sophia-border bg-sophia-surface px-4">
+    <header
+      className="flex h-14 shrink-0 items-center gap-3 border-b border-sophia-border bg-sophia-surface px-4"
+      data-reader-header
+    >
       {/* Back to library */}
       <button
         type="button"

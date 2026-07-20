@@ -1,4 +1,4 @@
-import { Maximize2, Minimize2 } from 'lucide-react'
+import { Maximize2 } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import {
   Tooltip,
@@ -8,17 +8,12 @@ import {
 } from '../../components/ui/tooltip'
 
 type ReaderFullscreenToggleProps = {
-  isFullscreen: boolean
-  onToggle: () => void | Promise<void>
+  onEnter: () => void | Promise<void>
 }
 
 export function ReaderFullscreenToggle({
-  isFullscreen,
-  onToggle,
+  onEnter,
 }: ReaderFullscreenToggleProps) {
-  const label = isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'
-  const Icon = isFullscreen ? Minimize2 : Maximize2
-
   return (
     <TooltipProvider>
       <Tooltip>
@@ -29,15 +24,14 @@ export function ReaderFullscreenToggle({
               variant="ghost"
               size="icon-lg"
               className="rounded-md text-sophia-text-muted hover:bg-sophia-bg hover:text-sophia-text focus-visible:ring-sophia-primary"
-              aria-label={label}
-              aria-pressed={isFullscreen}
-              onClick={() => void onToggle()}
+              aria-label="Enter fullscreen"
+              onClick={() => void onEnter()}
             />
           }
         >
-          <Icon className="size-4" aria-hidden="true" />
+          <Maximize2 className="size-4" aria-hidden="true" />
         </TooltipTrigger>
-        <TooltipContent side="bottom">{label}</TooltipContent>
+        <TooltipContent side="bottom">Enter fullscreen</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )

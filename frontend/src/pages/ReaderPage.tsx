@@ -234,7 +234,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     isFullscreen,
     error: fullscreenError,
     clearError: clearFullscreenError,
-    toggleFullscreen,
+    enterFullscreen,
   } = useReaderFullscreen({
     onFullscreenChange: handleFullscreenChange,
   })
@@ -967,10 +967,9 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
                 hasError={Boolean(highlightsLoadError || highlightMutationError)}
                 onClick={() => setHighlightsPanelOpen(true)}
               />
-              {fullscreenSupported ? (
+              {fullscreenSupported && !isFullscreen ? (
                 <ReaderFullscreenToggle
-                  isFullscreen={isFullscreen}
-                  onToggle={toggleFullscreen}
+                  onEnter={enterFullscreen}
                 />
               ) : null}
             </>
@@ -988,7 +987,10 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           }
         />
 
-        <div className="flex shrink-0 justify-center border-b border-sophia-border bg-sophia-surface px-3 py-2">
+        <div
+          className="flex shrink-0 justify-center border-b border-sophia-border bg-sophia-surface px-3 py-2"
+          data-reader-mode-selector
+        >
           <ReaderModeToggle
             mode={preferences.readerMode}
             disabled={preferencesLoading}
@@ -1024,7 +1026,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         ) : null}
 
         {/* Main content area: sidebar + viewer */}
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1" data-reader-content>
           {/* Desktop sidebar */}
           <ReaderSidebar
             chapters={chapters}
@@ -1033,7 +1035,10 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           />
 
           {/* Only the active reading surface is mounted. */}
-          <div className="relative min-h-0 min-w-0 flex-1">
+          <div
+            className="relative min-h-0 min-w-0 flex-1"
+            data-reader-viewer-container
+          >
             {preferencesLoading ? (
               <div className="grid h-full place-items-center">
                 <div className="grid justify-items-center gap-4" role="status">

@@ -203,6 +203,16 @@
   overflow: hidden;
 }
 
+.reader-root[data-fullscreen='true'] > [data-reader-header],
+.reader-root[data-fullscreen='true'] > [data-reader-mode-selector] {
+  display: none;
+}
+
+.reader-root[data-fullscreen='true'] > [data-reader-content] {
+  min-height: 0;
+  flex: 1 1 0%;
+}
+
 .reader-root.reader-mood-printed-ink::backdrop {
   background: #071019;
 }
