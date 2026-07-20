@@ -18,6 +18,8 @@ import {
   type PDFViewerTextSelectionData,
   type PDFViewerZoomLevel,
 } from '../components/ui/pdf-viewer'
+import { PortalContainerProvider } from '../components/ui/portal-container'
+import { ReaderFullscreenToggle } from '../features/reader/ReaderFullscreenToggle'
 import { ReaderHeader } from '../features/reader/ReaderHeader'
 import { ReaderSidebar } from '../features/reader/ReaderSidebar'
 import { ReaderMobileChapters } from '../features/reader/ReaderMobileChapters'
@@ -39,6 +41,7 @@ import {
 import { findChapterForPage, sortChapters } from '../features/reader/reader.utils'
 import type { ReaderState } from '../features/reader/reader.types'
 import { useReadingProgress } from '../features/reader/use-reading-progress'
+import { useReaderFullscreen } from '../features/reader/use-reader-fullscreen'
 import {
   ReaderSelectionToolbar,
   createPdfSelection,
@@ -219,6 +222,22 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     setPreviewColor('gold')
     clearReaderSelection()
   }, [clearReaderSelection])
+  const handleFullscreenChange = useCallback(() => {
+    if (selection || selectionError) {
+      clearSelection()
+    }
+  }, [clearSelection, selection, selectionError])
+  const {
+    readerRootRef,
+    readerElement,
+    isSupported: fullscreenSupported,
+    isFullscreen,
+    error: fullscreenError,
+    clearError: clearFullscreenError,
+    toggleFullscreen,
+  } = useReaderFullscreen({
+    onFullscreenChange: handleFullscreenChange,
+  })
   const reportSelectionError = useCallback((message: string) => {
     previewSelectionKeyRef.current = null
     setPreviewColor('gold')
@@ -265,6 +284,16 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
     return () => window.clearTimeout(timeout)
   }, [highlightNotice])
+
+  useEffect(() => {
+    if (!fullscreenError) {
+      return
+    }
+
+    const timeout = window.setTimeout(clearFullscreenError, 5_000)
+
+    return () => window.clearTimeout(timeout)
+  }, [clearFullscreenError, fullscreenError])
 
   const activateHighlight = useCallback((highlightId: string) => {
     setActiveHighlightId(highlightId)
@@ -914,275 +943,299 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const effectivePageCount = viewerPageCount ?? book.pageCount
 
   return (
-    <main className={`${readerMoodClass} flex h-svh flex-col overflow-hidden bg-sophia-bg text-sophia-text`}>
-      <PdfReadingMoodFilters />
-      {/* Reader header */}
-      <ReaderHeader
-        title={book.title}
-        author={book.author}
-        currentPage={currentPage}
-        pageCount={effectivePageCount}
-        currentChapterTitle={activeChapter?.title ?? null}
-        hasChapters={hasChapters}
-        onToggleChapters={toggleChapterDrawer}
-        actions={
-          <HighlightsTrigger
-            count={highlights.length}
-            hasError={Boolean(highlightsLoadError || highlightMutationError)}
-            onClick={() => setHighlightsPanelOpen(true)}
-          />
-        }
-        settings={
-          <ReaderPreferencesPanel
-            preferences={preferences}
-            loading={preferencesLoading}
-            saving={preferencesSaving}
-            error={preferencesError}
-            moodClassName={readerMoodClass}
-            onChange={updatePreferences}
-            onReset={resetPreferences}
-          />
-        }
-      />
-
-      <div className="flex shrink-0 justify-center border-b border-sophia-border bg-sophia-surface px-3 py-2">
-        <ReaderModeToggle
-          mode={preferences.readerMode}
-          disabled={preferencesLoading}
-          onChange={handleReaderModeChange}
-        />
-      </div>
-
-      {progressLoadState.status === 'error' || progressSaveError ? (
-        <p
-          className="m-0 shrink-0 border-b border-sophia-border bg-sophia-surface px-4 py-2 text-center text-xs text-sophia-text-muted"
-          role="status"
-        >
-          {progressSaveError ?? 'Your saved position could not be restored. Reading starts here.'}
-        </p>
-      ) : null}
-
-      {highlightNotice ? (
-        <p
-          className="m-0 shrink-0 border-b border-sophia-border bg-sophia-surface px-4 py-2 text-center text-xs text-sophia-text-muted"
-          role="status"
-        >
-          {highlightNotice}
-        </p>
-      ) : null}
-
-      {/* Main content area: sidebar + viewer */}
-      <div className="flex min-h-0 flex-1">
-        {/* Desktop sidebar */}
-        <ReaderSidebar
-          chapters={chapters}
+    <PortalContainerProvider container={readerElement}>
+      <main
+        ref={readerRootRef}
+        className={`${readerMoodClass} reader-root flex h-svh flex-col overflow-hidden bg-sophia-bg text-sophia-text`}
+        data-fullscreen={isFullscreen ? 'true' : 'false'}
+        data-reader-root
+      >
+        <PdfReadingMoodFilters />
+        {/* Reader header */}
+        <ReaderHeader
+          title={book.title}
+          author={book.author}
           currentPage={currentPage}
-          onSelectChapter={handleSelectChapter}
-        />
-
-        {/* Only the active reading surface is mounted. */}
-        <div className="relative min-h-0 min-w-0 flex-1">
-          {preferencesLoading ? (
-            <div className="grid h-full place-items-center">
-              <div className="grid justify-items-center gap-4" role="status">
-                <span
-                  className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
-                  aria-hidden="true"
-                />
-                <p className="m-0 text-sm font-semibold text-sophia-text-muted">
-                  Preparing your reading view...
-                </p>
-              </div>
-            </div>
-          ) : null}
-
-          {!preferencesLoading && preferences.readerMode === 'pdf' ? (
+          pageCount={effectivePageCount}
+          currentChapterTitle={activeChapter?.title ?? null}
+          hasChapters={hasChapters}
+          onToggleChapters={toggleChapterDrawer}
+          actions={
             <>
-              {pdfState.status === 'loading' || pdfState.status === 'idle' ? (
-                <div className="grid h-full place-items-center">
-                  <div className="grid justify-items-center gap-4" role="status">
-                    <span
-                      className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
-                      aria-hidden="true"
-                    />
-                    <p className="m-0 text-sm font-semibold text-sophia-text-muted">
-                      Loading the original PDF...
-                    </p>
-                  </div>
-                </div>
-              ) : null}
-
-              {pdfState.status === 'error' ? (
-                <div className="grid h-full place-items-center px-5 text-center">
-                  <div className="grid max-w-[400px] justify-items-center gap-4">
-                    <h2 className="m-0 text-lg font-semibold text-sophia-text">
-                      Unable to display this book.
-                    </h2>
-                    <p className="m-0 text-sm leading-6 text-sophia-text-muted">
-                      {pdfState.message}
-                    </p>
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        className="min-h-10 rounded-lg border border-sophia-border px-4 text-sm font-semibold text-sophia-text hover:border-sophia-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
-                        onClick={goToLibrary}
-                      >
-                        Back to library
-                      </button>
-                      <button
-                        type="button"
-                        className="min-h-10 rounded-lg bg-sophia-primary px-4 text-sm font-bold text-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
-                        onClick={handleRetryPdf}
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {pdfState.status === 'ready' ? (
-                <PDFViewer
-                  ref={viewerRef}
-                  src={pdfState.blobUrl}
-                  defaultZoom={viewerZoom}
-                  fileName={book.title}
-                  showDownload={false}
-                  showUpload={false}
-                  showRotateControls={false}
-                  onActivePageChange={handleActivePageChange}
-                  onDocumentLoadError={handleDocumentLoadError}
-                  onDocumentLoadSuccess={handleDocumentLoadSuccess}
-                  onPageRenderError={handlePageRenderError}
-                  onPageRenderSuccess={handlePageRenderSuccess}
-                  onTextSelectionChange={handlePdfTextSelectionChange}
-                  onTextSelectionError={handlePdfTextSelectionError}
-                  renderPageOverlay={renderPdfHighlights}
-                  onThumbnailSidebarOpenChange={handleThumbnailSidebarOpenChange}
-                  thumbnailSidebarOpen={preferences.readerSidebarOpen}
-                  className="h-full w-full"
+              <HighlightsTrigger
+                count={highlights.length}
+                hasError={Boolean(highlightsLoadError || highlightMutationError)}
+                onClick={() => setHighlightsPanelOpen(true)}
+              />
+              {fullscreenSupported ? (
+                <ReaderFullscreenToggle
+                  isFullscreen={isFullscreen}
+                  onToggle={toggleFullscreen}
                 />
-              ) : null}
-
-              {pdfState.status === 'ready' && !isPdfPageRendered ? (
-                <div className="absolute inset-0 z-20 grid place-items-center bg-sophia-bg/95">
-                  <div className="grid justify-items-center gap-4" role="status">
-                    <span
-                      className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
-                      aria-hidden="true"
-                    />
-                    <p className="m-0 text-sm font-semibold text-sophia-text-muted">
-                      Rendering the page...
-                    </p>
-                  </div>
-                </div>
               ) : null}
             </>
-          ) : null}
+          }
+          settings={
+            <ReaderPreferencesPanel
+              preferences={preferences}
+              loading={preferencesLoading}
+              saving={preferencesSaving}
+              error={preferencesError}
+              moodClassName={readerMoodClass}
+              onChange={updatePreferences}
+              onReset={resetPreferences}
+            />
+          }
+        />
 
-          {!preferencesLoading && preferences.readerMode === 'reading' ? (
-            <>
-              {readingContentState.status === 'loading' ||
-              readingContentState.status === 'idle' ? (
-                <div className="grid h-full place-items-center">
-                  <div className="grid justify-items-center gap-4" role="status">
-                    <span
-                      className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
-                      aria-hidden="true"
-                    />
-                    <p className="m-0 text-sm font-semibold text-sophia-text-muted">
-                      Preparing the reading view...
-                    </p>
-                  </div>
+        <div className="flex shrink-0 justify-center border-b border-sophia-border bg-sophia-surface px-3 py-2">
+          <ReaderModeToggle
+            mode={preferences.readerMode}
+            disabled={preferencesLoading}
+            onChange={handleReaderModeChange}
+          />
+        </div>
+
+        {progressLoadState.status === 'error' || progressSaveError ? (
+          <p
+            className="m-0 shrink-0 border-b border-sophia-border bg-sophia-surface px-4 py-2 text-center text-xs text-sophia-text-muted"
+            role="status"
+          >
+            {progressSaveError ?? 'Your saved position could not be restored. Reading starts here.'}
+          </p>
+        ) : null}
+
+        {fullscreenError ? (
+          <p
+            className="m-0 shrink-0 border-b border-sophia-border bg-sophia-surface px-4 py-2 text-center text-xs text-sophia-text-muted"
+            role="status"
+          >
+            {fullscreenError}
+          </p>
+        ) : null}
+
+        {highlightNotice ? (
+          <p
+            className="m-0 shrink-0 border-b border-sophia-border bg-sophia-surface px-4 py-2 text-center text-xs text-sophia-text-muted"
+            role="status"
+          >
+            {highlightNotice}
+          </p>
+        ) : null}
+
+        {/* Main content area: sidebar + viewer */}
+        <div className="flex min-h-0 flex-1">
+          {/* Desktop sidebar */}
+          <ReaderSidebar
+            chapters={chapters}
+            currentPage={currentPage}
+            onSelectChapter={handleSelectChapter}
+          />
+
+          {/* Only the active reading surface is mounted. */}
+          <div className="relative min-h-0 min-w-0 flex-1">
+            {preferencesLoading ? (
+              <div className="grid h-full place-items-center">
+                <div className="grid justify-items-center gap-4" role="status">
+                  <span
+                    className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
+                    aria-hidden="true"
+                  />
+                  <p className="m-0 text-sm font-semibold text-sophia-text-muted">
+                    Preparing your reading view...
+                  </p>
                 </div>
-              ) : null}
+              </div>
+            ) : null}
 
-              {readingContentState.status === 'ready' ? (
-                <ReflowedReadingMode
-                  ref={reflowedReaderRef}
-                  content={readingContentState.data}
-                  initialPage={currentPage}
-                  preferences={preferences}
-                  highlights={highlights}
-                  preview={highlightPreview}
-                  activeHighlightId={activeHighlightId}
-                  onActivePageChange={handleActivePageChange}
-                  onHighlightActivate={activateHighlight}
-                  onSelectionCapture={captureSelection}
-                />
-              ) : null}
+            {!preferencesLoading && preferences.readerMode === 'pdf' ? (
+              <>
+                {pdfState.status === 'loading' || pdfState.status === 'idle' ? (
+                  <div className="grid h-full place-items-center">
+                    <div className="grid justify-items-center gap-4" role="status">
+                      <span
+                        className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
+                        aria-hidden="true"
+                      />
+                      <p className="m-0 text-sm font-semibold text-sophia-text-muted">
+                        Loading the original PDF...
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
 
-              {readingContentState.status === 'unavailable' ||
-              readingContentState.status === 'error' ? (
-                <div className="grid h-full place-items-center px-5 text-center" role="alert">
-                  <div className="grid max-w-[440px] justify-items-center gap-4">
-                    <h2 className="m-0 text-xl font-semibold text-sophia-text">
-                      Reading Mode is not available for this book.
-                    </h2>
-                    <p className="m-0 text-sm leading-6 text-sophia-text-muted">
-                      {readingContentState.status === 'error'
-                        ? readingContentState.message
-                        : 'This book does not have extracted text yet. You can continue using the original PDF.'}
-                    </p>
-                    <div className="flex flex-wrap justify-center gap-3">
-                      {readingContentState.status === 'error' ? (
+                {pdfState.status === 'error' ? (
+                  <div className="grid h-full place-items-center px-5 text-center">
+                    <div className="grid max-w-[400px] justify-items-center gap-4">
+                      <h2 className="m-0 text-lg font-semibold text-sophia-text">
+                        Unable to display this book.
+                      </h2>
+                      <p className="m-0 text-sm leading-6 text-sophia-text-muted">
+                        {pdfState.message}
+                      </p>
+                      <div className="flex gap-3">
                         <button
                           type="button"
                           className="min-h-10 rounded-lg border border-sophia-border px-4 text-sm font-semibold text-sophia-text hover:border-sophia-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
-                          onClick={handleRetryReadingContent}
+                          onClick={goToLibrary}
+                        >
+                          Back to library
+                        </button>
+                        <button
+                          type="button"
+                          className="min-h-10 rounded-lg bg-sophia-primary px-4 text-sm font-bold text-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
+                          onClick={handleRetryPdf}
                         >
                           Retry
                         </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="min-h-10 rounded-lg bg-sophia-primary px-4 text-sm font-bold text-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
-                        onClick={openOriginalPdf}
-                      >
-                        Open Original PDF
-                      </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
-            </>
-          ) : null}
+                ) : null}
+
+                {pdfState.status === 'ready' ? (
+                  <PDFViewer
+                    ref={viewerRef}
+                    src={pdfState.blobUrl}
+                    defaultZoom={viewerZoom}
+                    fileName={book.title}
+                    showDownload={false}
+                    showUpload={false}
+                    showRotateControls={false}
+                    onActivePageChange={handleActivePageChange}
+                    onDocumentLoadError={handleDocumentLoadError}
+                    onDocumentLoadSuccess={handleDocumentLoadSuccess}
+                    onPageRenderError={handlePageRenderError}
+                    onPageRenderSuccess={handlePageRenderSuccess}
+                    onTextSelectionChange={handlePdfTextSelectionChange}
+                    onTextSelectionError={handlePdfTextSelectionError}
+                    renderPageOverlay={renderPdfHighlights}
+                    onThumbnailSidebarOpenChange={handleThumbnailSidebarOpenChange}
+                    thumbnailSidebarOpen={preferences.readerSidebarOpen}
+                    className="h-full w-full"
+                  />
+                ) : null}
+
+                {pdfState.status === 'ready' && !isPdfPageRendered ? (
+                  <div className="absolute inset-0 z-20 grid place-items-center bg-sophia-bg/95">
+                    <div className="grid justify-items-center gap-4" role="status">
+                      <span
+                        className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
+                        aria-hidden="true"
+                      />
+                      <p className="m-0 text-sm font-semibold text-sophia-text-muted">
+                        Rendering the page...
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
+            {!preferencesLoading && preferences.readerMode === 'reading' ? (
+              <>
+                {readingContentState.status === 'loading' ||
+                readingContentState.status === 'idle' ? (
+                  <div className="grid h-full place-items-center">
+                    <div className="grid justify-items-center gap-4" role="status">
+                      <span
+                        className="h-9 w-9 animate-spin rounded-full border-2 border-sophia-border border-t-sophia-primary"
+                        aria-hidden="true"
+                      />
+                      <p className="m-0 text-sm font-semibold text-sophia-text-muted">
+                        Preparing the reading view...
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {readingContentState.status === 'ready' ? (
+                  <ReflowedReadingMode
+                    ref={reflowedReaderRef}
+                    content={readingContentState.data}
+                    initialPage={currentPage}
+                    preferences={preferences}
+                    highlights={highlights}
+                    preview={highlightPreview}
+                    activeHighlightId={activeHighlightId}
+                    onActivePageChange={handleActivePageChange}
+                    onHighlightActivate={activateHighlight}
+                    onSelectionCapture={captureSelection}
+                  />
+                ) : null}
+
+                {readingContentState.status === 'unavailable' ||
+                readingContentState.status === 'error' ? (
+                  <div className="grid h-full place-items-center px-5 text-center" role="alert">
+                    <div className="grid max-w-[440px] justify-items-center gap-4">
+                      <h2 className="m-0 text-xl font-semibold text-sophia-text">
+                        Reading Mode is not available for this book.
+                      </h2>
+                      <p className="m-0 text-sm leading-6 text-sophia-text-muted">
+                        {readingContentState.status === 'error'
+                          ? readingContentState.message
+                          : 'This book does not have extracted text yet. You can continue using the original PDF.'}
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-3">
+                        {readingContentState.status === 'error' ? (
+                          <button
+                            type="button"
+                            className="min-h-10 rounded-lg border border-sophia-border px-4 text-sm font-semibold text-sophia-text hover:border-sophia-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
+                            onClick={handleRetryReadingContent}
+                          >
+                            Retry
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="min-h-10 rounded-lg bg-sophia-primary px-4 text-sm font-bold text-sophia-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary"
+                          onClick={openOriginalPdf}
+                        >
+                          Open Original PDF
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      {/* Mobile chapter drawer */}
-      <ReaderMobileChapters
-        chapters={chapters}
-        currentPage={currentPage}
-        isOpen={chapterDrawerOpen}
-        onClose={closeChapterDrawer}
-        onSelectChapter={handleSelectChapter}
-      />
+        {/* Mobile chapter drawer */}
+        <ReaderMobileChapters
+          chapters={chapters}
+          currentPage={currentPage}
+          isOpen={chapterDrawerOpen}
+          onClose={closeChapterDrawer}
+          onSelectChapter={handleSelectChapter}
+        />
 
-      <HighlightsPanel
-        isOpen={highlightsPanelOpen}
-        highlights={highlights}
-        chapters={chapters}
-        activeHighlightId={activeHighlightId}
-        loading={highlightsLoading}
-        error={highlightsLoadError ?? highlightMutationError}
-        deletingIds={deletingHighlightIds}
-        onClose={() => setHighlightsPanelOpen(false)}
-        onRetry={handleRetryHighlights}
-        onNavigate={handleNavigateHighlight}
-        onDelete={handleDeleteHighlight}
-      />
+        <HighlightsPanel
+          isOpen={highlightsPanelOpen}
+          highlights={highlights}
+          chapters={chapters}
+          activeHighlightId={activeHighlightId}
+          loading={highlightsLoading}
+          error={highlightsLoadError ?? highlightMutationError}
+          deletingIds={deletingHighlightIds}
+          onClose={() => setHighlightsPanelOpen(false)}
+          onRetry={handleRetryHighlights}
+          onNavigate={handleNavigateHighlight}
+          onDelete={handleDeleteHighlight}
+        />
 
-      <ReaderSelectionToolbar
-        selection={selection}
-        error={selectionError ?? (selection ? highlightMutationError : null)}
-        saving={highlightSaving}
-        color={previewColor}
-        onColorChange={setPreviewColor}
-        onHighlight={handleSaveHighlight}
-        onClear={clearSelection}
-        onDismissError={dismissSelectionToolbarError}
-      />
-    </main>
+        <ReaderSelectionToolbar
+          selection={selection}
+          error={selectionError ?? (selection ? highlightMutationError : null)}
+          saving={highlightSaving}
+          color={previewColor}
+          onColorChange={setPreviewColor}
+          onHighlight={handleSaveHighlight}
+          onClear={clearSelection}
+          onDismissError={dismissSelectionToolbarError}
+        />
+      </main>
+    </PortalContainerProvider>
   )
 }

@@ -188,6 +188,33 @@
   --pdf-highlight-blend-mode: screen;
 }
 
+.reader-root:fullscreen {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  padding:
+    env(safe-area-inset-top)
+    env(safe-area-inset-right)
+    env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  overflow: hidden;
+}
+
+.reader-root.reader-mood-printed-ink::backdrop {
+  background: #071019;
+}
+
+.reader-root.reader-mood-warm-paper::backdrop {
+  background: #f4ebdd;
+}
+
+.reader-root.reader-mood-night-study::backdrop {
+  background: #111111;
+}
+
 :is(.reader-mood-printed-ink, .reader-mood-warm-paper, .reader-mood-night-study) [data-pdf-render-layer] {
   filter: var(--pdf-page-filter);
 }
