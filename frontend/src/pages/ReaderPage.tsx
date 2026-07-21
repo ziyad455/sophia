@@ -25,8 +25,6 @@ import { ReaderSidebar } from '../features/reader/ReaderSidebar'
 import { ReaderMobileChapters } from '../features/reader/ReaderMobileChapters'
 import { ReaderModeToggle } from '../features/reader/ReaderModeToggle'
 import {
-  HighlightsPanel,
-  HighlightsTrigger,
   PdfHighlightsOverlay,
   isStructurallyUnresolved,
   useHighlights,
@@ -35,16 +33,20 @@ import {
   type ReaderHighlight,
 } from '../features/reader/highlights'
 import {
-  AddNoteMenu,
   HighlightNoteActions,
   NoteEditor,
-  NotesPanel,
   highlightSource,
   passageSourceFromSelection,
   useNotes,
   type NoteEditorState,
   type ReaderNote,
 } from '../features/reader/notes'
+import {
+  AnnotationPanel,
+  AnnotationsTrigger,
+  useAnnotationsPanel,
+  type OpenAnnotationsOptions,
+} from '../features/reader/annotations'
 import {
   ReflowedReadingMode,
   type ReflowedReadingModeHandle,
@@ -158,10 +160,6 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [viewerPageCount, setViewerPageCount] = useState<number | null>(null)
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false)
-  const [highlightsPanelOpen, setHighlightsPanelOpen] = useState(false)
-  const [notesPanelOpen, setNotesPanelOpen] = useState(false)
-  const [notesPanelInitialNoteId, setNotesPanelInitialNoteId] =
-    useState<string | null>(null)
   const [noteEditorState, setNoteEditorState] =
     useState<NoteEditorState | null>(null)
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null)
@@ -169,6 +167,15 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     useState<string | null>(null)
   const [highlightNotice, setHighlightNotice] = useState<string | null>(null)
   const [previewColor, setPreviewColor] = useState<HighlightColor>('gold')
+  const {
+    isOpen: annotationsPanelOpen,
+    activeTab: annotationsPanelTab,
+    selectedNoteId: annotationsPanelNoteId,
+    openPanel: openAnnotationsPanel,
+    closePanel: closeAnnotationsPanel,
+    selectTab: selectAnnotationsTab,
+    selectNote: selectAnnotationNote,
+  } = useAnnotationsPanel()
   const viewerRef = useRef<PDFViewerHandle>(null)
   const reflowedReaderRef = useRef<ReflowedReadingModeHandle>(null)
   const blobUrlRef = useRef<string | null>(null)
@@ -897,7 +904,6 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const handleNavigateHighlight = useCallback((highlight: ReaderHighlight) => {
     clearSelection()
     setActiveHighlightId(highlight.id)
-    setHighlightsPanelOpen(false)
 
     if (preferences.readerMode === 'reading') {
       const restored = reflowedReaderRef.current?.scrollToHighlight(
@@ -938,17 +944,13 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     refreshHighlights()
   }, [clearHighlightMutationError, refreshHighlights])
 
-  const openNotesPanel = useCallback((initialNoteId: string | null = null) => {
-    setHighlightsPanelOpen(false)
+  const handleOpenAnnotations = useCallback((
+    options: OpenAnnotationsOptions = {},
+  ) => {
+    clearSelection()
     setActiveHighlightActionId(null)
-    setNotesPanelInitialNoteId(initialNoteId)
-    setNotesPanelOpen(true)
-  }, [])
-
-  const closeNotesPanel = useCallback(() => {
-    setNotesPanelOpen(false)
-    setNotesPanelInitialNoteId(null)
-  }, [])
+    openAnnotationsPanel(options)
+  }, [clearSelection, openAnnotationsPanel])
 
   const closeNoteEditor = useCallback(() => {
     setNoteEditorState(null)
@@ -991,18 +993,20 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     setNoteEditorState({ mode: 'create', source: { kind: 'book' } })
   }, [clearNoteMutationError])
 
-  const handleAddHighlightNote = useCallback(() => {
-    if (!activeActionHighlight) {
-      return
-    }
-
+  const handleAddNoteToHighlight = useCallback((highlight: ReaderHighlight) => {
     clearNoteMutationError()
     setActiveHighlightActionId(null)
     setNoteEditorState({
       mode: 'create',
-      source: highlightSource(activeActionHighlight, readerChapters),
+      source: highlightSource(highlight, readerChapters),
     })
-  }, [activeActionHighlight, clearNoteMutationError, readerChapters])
+  }, [clearNoteMutationError, readerChapters])
+
+  const handleAddHighlightNote = useCallback(() => {
+    if (activeActionHighlight) {
+      handleAddNoteToHighlight(activeActionHighlight)
+    }
+  }, [activeActionHighlight, handleAddNoteToHighlight])
 
   const handleOpenHighlightNotes = useCallback(() => {
     if (!activeActionHighlight) {
@@ -1011,8 +1015,11 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
     const firstNote = notesForHighlight(activeActionHighlight.id)[0]
 
-    openNotesPanel(firstNote?.id ?? null)
-  }, [activeActionHighlight, notesForHighlight, openNotesPanel])
+    handleOpenAnnotations({
+      tab: 'notes',
+      noteId: firstNote?.id ?? null,
+    })
+  }, [activeActionHighlight, handleOpenAnnotations, notesForHighlight])
 
   const handleSaveNote = useCallback(async (content: string) => {
     if (!noteEditorState) {
@@ -1054,7 +1061,6 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
       ? highlights.find((highlight) => highlight.id === note.highlightId) ?? null
       : null
 
-    closeNotesPanel()
     clearSelection()
     setActiveHighlightActionId(null)
 
@@ -1074,7 +1080,6 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     }
   }, [
     clearSelection,
-    closeNotesPanel,
     handleNavigateHighlight,
     highlights,
     preferences.readerMode,
@@ -1204,23 +1209,15 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           onToggleChapters={toggleChapterDrawer}
           actions={
             <>
-              <AddNoteMenu
-                count={notes.length}
-                hasError={Boolean(notesLoadError || noteMutationError)}
-                currentPage={currentPage}
-                currentChapter={activeChapter}
-                onAddPage={handleAddPageNote}
-                onAddChapter={handleAddChapterNote}
-                onAddBook={handleAddBookNote}
-                onOpenNotes={() => openNotesPanel()}
-              />
-              <HighlightsTrigger
-                count={highlights.length}
-                hasError={Boolean(highlightsLoadError || highlightMutationError)}
-                onClick={() => {
-                  closeNotesPanel()
-                  setHighlightsPanelOpen(true)
-                }}
+              <AnnotationsTrigger
+                count={highlights.length + notes.length}
+                hasError={Boolean(
+                  highlightsLoadError ||
+                  highlightMutationError ||
+                  notesLoadError ||
+                  noteMutationError
+                )}
+                onClick={() => handleOpenAnnotations()}
               />
               {fullscreenSupported && !isFullscreen ? (
                 <ReaderFullscreenToggle
@@ -1244,16 +1241,16 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
         {isFullscreen ? (
           <div className="fixed right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-40">
-            <AddNoteMenu
-              count={notes.length}
-              hasError={Boolean(notesLoadError || noteMutationError)}
-              currentPage={currentPage}
-              currentChapter={activeChapter}
-              triggerClassName="border border-sophia-border bg-sophia-surface shadow-lg"
-              onAddPage={handleAddPageNote}
-              onAddChapter={handleAddChapterNote}
-              onAddBook={handleAddBookNote}
-              onOpenNotes={() => openNotesPanel()}
+            <AnnotationsTrigger
+              count={highlights.length + notes.length}
+              hasError={Boolean(
+                highlightsLoadError ||
+                highlightMutationError ||
+                notesLoadError ||
+                noteMutationError
+              )}
+              className="border border-sophia-border bg-sophia-surface shadow-lg"
+              onClick={() => handleOpenAnnotations()}
             />
           </div>
         ) : null}
@@ -1496,32 +1493,36 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           onSelectChapter={handleSelectChapter}
         />
 
-        <HighlightsPanel
-          isOpen={highlightsPanelOpen}
+        <AnnotationPanel
+          isOpen={annotationsPanelOpen}
+          activeTab={annotationsPanelTab}
+          selectedNoteId={annotationsPanelNoteId}
           highlights={highlights}
-          chapters={chapters}
-          activeHighlightId={activeHighlightId}
-          loading={highlightsLoading}
-          error={highlightsLoadError ?? highlightMutationError}
-          deletingIds={deletingHighlightIds}
-          onClose={() => setHighlightsPanelOpen(false)}
-          onRetry={handleRetryHighlights}
-          onNavigate={handleNavigateHighlight}
-          onDelete={handleDeleteHighlight}
-        />
-
-        <NotesPanel
-          isOpen={notesPanelOpen}
           notes={notes}
-          initialNoteId={notesPanelInitialNoteId}
-          loading={notesLoading}
-          error={notesLoadError ?? noteMutationError}
-          deletingIds={deletingNoteIds}
-          onClose={closeNotesPanel}
-          onRetry={handleRetryNotes}
-          onNavigate={handleNavigateNote}
-          onEdit={handleEditNote}
-          onDelete={handleDeleteNote}
+          chapters={chapters}
+          currentPage={currentPage}
+          currentChapter={activeChapter}
+          activeHighlightId={activeHighlightId}
+          highlightsLoading={highlightsLoading}
+          notesLoading={notesLoading}
+          highlightsError={highlightsLoadError ?? highlightMutationError}
+          notesError={notesLoadError ?? noteMutationError}
+          deletingHighlightIds={deletingHighlightIds}
+          deletingNoteIds={deletingNoteIds}
+          onClose={closeAnnotationsPanel}
+          onSelectTab={selectAnnotationsTab}
+          onSelectNote={selectAnnotationNote}
+          onRetryHighlights={handleRetryHighlights}
+          onRetryNotes={handleRetryNotes}
+          onNavigateHighlight={handleNavigateHighlight}
+          onNavigateNote={handleNavigateNote}
+          onAddHighlightNote={handleAddNoteToHighlight}
+          onAddPageNote={handleAddPageNote}
+          onAddChapterNote={handleAddChapterNote}
+          onAddBookNote={handleAddBookNote}
+          onEditNote={handleEditNote}
+          onDeleteHighlight={handleDeleteHighlight}
+          onDeleteNote={handleDeleteNote}
         />
 
         {activeActionHighlight ? (
