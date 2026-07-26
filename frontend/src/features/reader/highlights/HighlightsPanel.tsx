@@ -2,7 +2,11 @@ import { useEffect, useRef } from 'react'
 import { Highlighter, RotateCcw, Trash2, X } from 'lucide-react'
 import type { ReaderChapter } from '../../../books'
 import type { ReaderHighlight } from './highlight.types'
-import { highlightMarkClass, isStructurallyUnresolved } from './highlight.utils'
+import {
+  highlightColorLabel,
+  highlightColorValue,
+  isStructurallyUnresolved,
+} from './highlight.utils'
 
 type HighlightsTriggerProps = {
   count: number
@@ -202,10 +206,11 @@ export function HighlightsPanel({
                 <div className="mt-3 flex items-center justify-between">
                   <span className="inline-flex items-center gap-2 text-xs capitalize text-sophia-text-muted">
                     <span
-                      className={`h-3 w-3 rounded-[2px] border border-sophia-border ${highlightMarkClass[highlight.color]}`}
+                      className="h-3 w-3 rounded-[2px] border border-sophia-border"
+                      style={{ backgroundColor: highlightColorValue(highlight.color) }}
                       aria-hidden="true"
                     />
-                    {highlight.color}
+                    {highlightColorLabel(highlight.color)}
                   </span>
                   <button
                     type="button"

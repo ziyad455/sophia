@@ -3,19 +3,27 @@ import type {
   HighlightPreview,
   ReaderHighlight,
 } from './highlight.types'
+import {
+  getHighlightColorForeground,
+  getHighlightColorLabel,
+  getHighlightColorValue,
+  getPdfHighlightColorValue,
+} from '../../../theme'
 
-export const highlightMarkClass: Record<HighlightColor, string> = {
-  gold: 'bg-amber-300/45',
-  blue: 'bg-sky-300/35',
-  green: 'bg-emerald-300/35',
-  rose: 'bg-rose-300/35',
+export function highlightColorValue(color: HighlightColor): string {
+  return getHighlightColorValue(color)
 }
 
-export const highlightOverlayColor: Record<HighlightColor, string> = {
-  gold: 'rgba(245, 190, 61, 0.34)',
-  blue: 'rgba(56, 189, 248, 0.28)',
-  green: 'rgba(52, 211, 153, 0.28)',
-  rose: 'rgba(251, 113, 133, 0.28)',
+export function pdfHighlightColorValue(color: HighlightColor): string {
+  return getPdfHighlightColorValue(color)
+}
+
+export function highlightColorForeground(color: HighlightColor): string {
+  return getHighlightColorForeground(color)
+}
+
+export function highlightColorLabel(color: HighlightColor): string {
+  return getHighlightColorLabel(color)
 }
 
 export type ResolvedHighlightRange = {

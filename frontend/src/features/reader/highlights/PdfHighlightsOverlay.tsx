@@ -1,6 +1,6 @@
 import type { PDFViewerPageOverlayProps } from '../../../components/ui/pdf-viewer'
 import type { HighlightPreview, ReaderHighlight } from './highlight.types'
-import { highlightOverlayColor } from './highlight.utils'
+import { pdfHighlightColorValue } from './highlight.utils'
 
 type PdfHighlightsOverlayProps = PDFViewerPageOverlayProps & {
   highlights: ReaderHighlight[]
@@ -55,7 +55,7 @@ export function PdfHighlightsOverlay({
             top: rect.y * scale,
             width: rect.width * scale,
             height: rect.height * scale,
-            backgroundColor: highlightOverlayColor[highlight.color],
+            backgroundColor: pdfHighlightColorValue(highlight.color),
             boxShadow: activeHighlightId === highlight.id
               ? '0 0 0 2px var(--sophia-primary)'
               : undefined,
@@ -99,7 +99,7 @@ export function PdfHighlightsOverlay({
             top: rect.y * scale,
             width: rect.width * scale,
             height: rect.height * scale,
-            backgroundColor: highlightOverlayColor[preview?.color ?? 'gold'],
+            backgroundColor: pdfHighlightColorValue(preview!.color),
           }}
           aria-hidden="true"
         />

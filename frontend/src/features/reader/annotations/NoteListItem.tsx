@@ -1,6 +1,9 @@
 import { ExternalLink, Eye, Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { highlightMarkClass } from '../highlights/highlight.utils'
+import {
+  highlightColorLabel,
+  highlightColorValue,
+} from '../highlights/highlight.utils'
 import type { ReaderNote } from '../notes'
 import { noteCanNavigate } from '../notes/note.utils'
 import type { NoteAnnotationListItem } from './annotation.types'
@@ -60,10 +63,11 @@ export function NoteListItem({
       {linkedHighlight ? (
         <p className="mb-0 mt-2 inline-flex items-center gap-2 text-xs capitalize text-sophia-text-muted">
           <span
-            className={`h-3 w-3 rounded-[2px] border border-sophia-border ${highlightMarkClass[linkedHighlight.color]}`}
+            className="h-3 w-3 rounded-[2px] border border-sophia-border"
+            style={{ backgroundColor: highlightColorValue(linkedHighlight.color) }}
             aria-hidden="true"
           />
-          Attached to a {linkedHighlight.color} highlight
+          Attached to a {highlightColorLabel(linkedHighlight.color)} highlight
         </p>
       ) : null}
 

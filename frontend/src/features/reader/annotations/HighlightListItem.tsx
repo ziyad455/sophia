@@ -2,7 +2,8 @@ import { ExternalLink, NotebookPen, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { ReaderHighlight } from '../highlights'
 import {
-  highlightMarkClass,
+  highlightColorLabel,
+  highlightColorValue,
   isStructurallyUnresolved,
 } from '../highlights/highlight.utils'
 import type { ReaderNote } from '../notes'
@@ -51,12 +52,13 @@ export function HighlightListItem({
     >
       <div className="flex items-start gap-3">
         <span
-          className={`mt-1 h-4 w-1.5 shrink-0 rounded-full ${highlightMarkClass[highlight.color]}`}
+          className="mt-1 h-4 w-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: highlightColorValue(highlight.color) }}
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
           <p className="m-0 text-xs font-semibold capitalize text-sophia-primary">
-            {highlight.color} highlight
+            {highlightColorLabel(highlight.color)} highlight
           </p>
           <p className="mb-0 mt-1 text-xs leading-5 text-sophia-text-muted">
             {location}

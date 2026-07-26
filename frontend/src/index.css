@@ -154,6 +154,7 @@
   --pdf-page-filter: url('#sophia-pdf-printed-ink');
   --pdf-page-shadow: 0 4px 16px rgba(7, 16, 25, 0.14);
   --pdf-highlight-blend-mode: multiply;
+  --pdf-highlight-backdrop-filter: contrast(1.35);
 }
 
 .reader-mood-warm-paper {
@@ -170,6 +171,7 @@
   --pdf-page-filter: url('#sophia-pdf-warm-paper');
   --pdf-page-shadow: 0 6px 20px rgba(43, 33, 24, 0.2);
   --pdf-highlight-blend-mode: multiply;
+  --pdf-highlight-backdrop-filter: contrast(1.3);
 }
 
 .reader-mood-night-study {
@@ -186,6 +188,7 @@
   --pdf-page-filter: url('#sophia-pdf-night-study');
   --pdf-page-shadow: 0 4px 18px rgba(0, 0, 0, 0.46);
   --pdf-highlight-blend-mode: screen;
+  --pdf-highlight-backdrop-filter: contrast(1.55) brightness(1.2);
 }
 
 .reader-root:fullscreen {
@@ -233,6 +236,11 @@
   box-shadow: var(--pdf-page-shadow);
 }
 
+:is(.reader-mood-printed-ink, .reader-mood-warm-paper, .reader-mood-night-study) :is([data-pdf-highlight-overlay], [data-pdf-selection-overlay]) {
+  -webkit-backdrop-filter: var(--pdf-highlight-backdrop-filter);
+  backdrop-filter: var(--pdf-highlight-backdrop-filter);
+}
+
 :is(.reader-mood-printed-ink, .reader-mood-warm-paper, .reader-mood-night-study) [data-pdf-highlight-overlay] {
   mix-blend-mode: var(--pdf-highlight-blend-mode);
 }
@@ -263,6 +271,16 @@
 }
 
 @layer base {
+  *::selection {
+    background-color: var(--sophia-highlight-1);
+    color: var(--sophia-selection-text);
+  }
+
+  *::-moz-selection {
+    background-color: var(--sophia-highlight-1);
+    color: var(--sophia-selection-text);
+  }
+
   body {
     background:
       radial-gradient(circle at top, var(--sophia-bg-glow), transparent 35%),

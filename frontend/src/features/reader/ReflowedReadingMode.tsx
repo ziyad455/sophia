@@ -9,7 +9,6 @@ import {
 import type { CSSProperties } from 'react'
 import type { ReadingContentResponse } from '../../books'
 import {
-  highlightOverlayColor,
   type HighlightPreview,
   type ReaderHighlight,
 } from './highlights'
@@ -222,15 +221,12 @@ export const ReflowedReadingMode = forwardRef<
     }
   }, [pages])
 
-  const articleStyle: CSSProperties & { '--reader-selection-color': string } = {
+  const articleStyle: CSSProperties = {
     fontFamily:
       preferences.readingFontFamily === 'sans' ? sansStack : serifStack,
     fontSize: `${preferences.readingFontSize}px`,
     lineHeight: preferences.readingLineHeight,
     maxWidth: `${preferences.readingContentWidth}px`,
-    '--reader-selection-color': preview
-      ? highlightOverlayColor[preview.color]
-      : 'color-mix(in srgb, var(--sophia-primary) 25%, transparent)',
   }
 
   return (
@@ -240,7 +236,7 @@ export const ReflowedReadingMode = forwardRef<
     >
       <article
         ref={articleRef}
-        className="mx-auto w-full pb-20 selection:bg-[var(--reader-selection-color)]"
+        className="mx-auto w-full pb-20"
         data-reader-selection-content
         style={articleStyle}
         aria-label={`${content.book.title} in Reading Mode`}
