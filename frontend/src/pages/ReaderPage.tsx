@@ -71,8 +71,8 @@ import {
 } from '../features/reader/preferences'
 import { PdfReadingMoodFilters } from '../features/reader/preferences/PdfReadingMoodFilters'
 import {
+  HIGHLIGHT_COLORS,
   getDefaultHighlightColor,
-  getThemeHighlightColors,
 } from '../theme'
 
 type ReaderPageProps = {
@@ -196,14 +196,10 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     updatePreferences,
     resetPreferences,
   } = useReaderPreferences()
-  const highlightColors = getThemeHighlightColors(preferences.readingMood)
-  const defaultHighlightColor = getDefaultHighlightColor(preferences.readingMood)
+  const highlightColors = HIGHLIGHT_COLORS
+  const defaultHighlightColor = getDefaultHighlightColor()
   const [previewColor, setPreviewColor] =
     useState<HighlightColor>(defaultHighlightColor)
-
-  useEffect(() => {
-    setPreviewColor(defaultHighlightColor)
-  }, [defaultHighlightColor])
   const {
     loadState: progressLoadState,
     queueSave: queueProgressSave,

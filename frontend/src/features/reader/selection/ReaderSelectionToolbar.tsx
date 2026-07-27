@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import type { CSSProperties, PointerEvent } from 'react'
 import { Highlighter, LoaderCircle, NotebookPen, X } from 'lucide-react'
 import type { HighlightColor } from '../highlights'
-import type { ThemeHighlightColor } from '../../../theme'
+import type { HighlightColorOption } from '../../../theme'
 import type { ReaderSelection } from './reader-selection.types'
 
 type ReaderSelectionToolbarProps = {
@@ -10,7 +10,7 @@ type ReaderSelectionToolbarProps = {
   error: string | null
   saving: boolean
   color: HighlightColor
-  colors: readonly ThemeHighlightColor[]
+  colors: readonly HighlightColorOption[]
   onColorChange: (color: HighlightColor) => void
   onHighlight: () => void | Promise<void>
   onAddNote: () => void

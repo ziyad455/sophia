@@ -6,29 +6,18 @@ import {
   getHighlightColorForeground,
   getHighlightColorValue,
   getPdfHighlightColorValue,
-  getThemeHighlightColors,
+  HIGHLIGHT_COLORS,
   isHighlightColorId,
   themes,
   type ThemeId,
 } from '../src/theme.ts'
 
-const expectedPalettes = {
-  'printed-ink': [
-    'rgba(214, 177, 106, 0.82)',
-    'rgba(145, 181, 139, 0.80)',
-    'rgba(135, 174, 196, 0.78)',
-  ],
-  'warm-paper': [
-    'rgba(205, 148, 64, 0.68)',
-    'rgba(116, 164, 105, 0.64)',
-    'rgba(190, 111, 105, 0.62)',
-  ],
-  'night-study': [
-    'rgba(117, 83, 32, 0.82)',
-    'rgba(34, 91, 84, 0.82)',
-    'rgba(91, 51, 79, 0.82)',
-  ],
-} satisfies Record<ThemeId, readonly string[]>
+const universalPaletteValues = [
+  'rgba(117, 83, 32, 0.82)',
+  'rgba(34, 91, 84, 0.82)',
+  'rgba(91, 51, 79, 0.82)',
+] as const
+
 const themeSurfaces = {
   'printed-ink': '#071019',
   'warm-paper': '#f4ebdd',
@@ -73,26 +62,22 @@ function contrastRatio(
   )
 }
 
-test('each reading theme exposes exactly three ordered highlight colors', () => {
-  for (const theme of themes) {
-    const colors = getThemeHighlightColors(theme.id)
-
-    assert.equal(colors.length, 3)
-    assert.deepEqual(
-      colors.map((color) => color.value),
-      expectedPalettes[theme.id],
-    )
-    assert.equal(getDefaultHighlightColor(theme.id), colors[0].id)
-  }
+test('universal highlight palette contains exactly three ordered highlight colors', () => {
+  assert.equal(HIGHLIGHT_COLORS.length, 3)
+  assert.deepEqual(
+    HIGHLIGHT_COLORS.map((color) => color.value),
+    universalPaletteValues,
+  )
+  assert.equal(getDefaultHighlightColor(), HIGHLIGHT_COLORS[0].id)
 })
 
-test('theme highlight identifiers are unique and recognized', () => {
-  const ids = themes.flatMap((theme) =>
-    theme.highlightColors.map((color) => color.id),
-  )
+test('highlight color identifiers are unique and recognized', () => {
+  const ids = HIGHLIGHT_COLORS.map((color) => color.id)
 
-  assert.equal(new Set(ids).size, 9)
+  assert.equal(new Set(ids).size, 3)
   ids.forEach((id) => assert.equal(isHighlightColorId(id), true))
+  assert.equal(isHighlightColorId('printed-ink-v2-1'), true)
+  assert.equal(isHighlightColorId('warm-paper-v2-1'), true)
   assert.equal(isHighlightColorId('printed-ink-4'), false)
   assert.equal(isHighlightColorId('rgba(1, 2, 3, 0.5)'), false)
 })
@@ -101,7 +86,7 @@ test('new highlight text maintains accessible contrast on every reading surface'
   for (const theme of themes) {
     const surface = readHexColor(themeSurfaces[theme.id])
 
-    for (const color of theme.highlightColors) {
+    for (const color of HIGHLIGHT_COLORS) {
       const [red, green, blue, alpha] = readRgbaColor(color.value)
       const composite = [red, green, blue].map((channel, index) =>
         Math.round(channel * alpha + surface[index] * (1 - alpha)),
@@ -110,39 +95,34 @@ test('new highlight text maintains accessible contrast on every reading surface'
 
       assert.ok(
         contrastRatio(foreground, composite) >= 4.5,
-        `${color.id} does not meet a 4.5:1 contrast ratio`,
+        `${color.id} does not meet a 4.5:1 contrast ratio on ${theme.id}`,
       )
     }
   }
 })
 
 test('PDF highlights preserve hue while using a softer background alpha', () => {
-  for (const theme of themes) {
-    for (const color of theme.highlightColors) {
-      const [red, green, blue, alpha] = readRgbaColor(color.value)
-      const [pdfRed, pdfGreen, pdfBlue, pdfAlpha] = readRgbaColor(
-        getPdfHighlightColorValue(color.id),
-      )
+  for (const color of HIGHLIGHT_COLORS) {
+    const [red, green, blue, alpha] = readRgbaColor(color.value)
+    const [pdfRed, pdfGreen, pdfBlue, pdfAlpha] = readRgbaColor(
+      getPdfHighlightColorValue(color.id),
+    )
 
-      assert.deepEqual([pdfRed, pdfGreen, pdfBlue], [red, green, blue])
-      assert.equal(pdfAlpha, Math.round(alpha * 0.45 * 1_000) / 1_000)
-      assert.ok(pdfAlpha < alpha)
-    }
+    assert.deepEqual([pdfRed, pdfGreen, pdfBlue], [red, green, blue])
+    assert.equal(pdfAlpha, Math.round(alpha * 0.45 * 1_000) / 1_000)
+    assert.ok(pdfAlpha < alpha)
   }
 })
 
-test('saved theme color tokens resolve independently of the active palette', () => {
-  const savedColor = getDefaultHighlightColor('printed-ink')
+test('saved theme color tokens resolve independently of the active theme', () => {
+  const savedColor = getDefaultHighlightColor()
   const storedValue = getHighlightColorValue(savedColor)
 
-  getThemeHighlightColors('warm-paper')
-  getThemeHighlightColors('night-study')
-
-  assert.equal(storedValue, 'rgba(214, 177, 106, 0.82)')
+  assert.equal(storedValue, 'rgba(117, 83, 32, 0.82)')
   assert.equal(getHighlightColorValue(savedColor), storedValue)
 })
 
-test('applying a theme immediately updates selection CSS variables', () => {
+test('applying a theme updates root theme dataset while keeping universal selection CSS variables', () => {
   const properties = new Map<string, string>()
   const storage = new Map<string, string>()
   const documentStub = {
@@ -173,18 +153,18 @@ test('applying a theme immediately updates selection CSS variables', () => {
   })
 
   try {
-    applyTheme('night-study')
+    applyTheme('warm-paper')
 
-    assert.equal(documentStub.documentElement.dataset.theme, 'night-study')
-    assert.equal(properties.get('--sophia-highlight-1'), expectedPalettes['night-study'][0])
-    assert.equal(properties.get('--sophia-highlight-2'), expectedPalettes['night-study'][1])
-    assert.equal(properties.get('--sophia-highlight-3'), expectedPalettes['night-study'][2])
+    assert.equal(documentStub.documentElement.dataset.theme, 'warm-paper')
+    assert.equal(properties.get('--sophia-highlight-1'), universalPaletteValues[0])
+    assert.equal(properties.get('--sophia-highlight-2'), universalPaletteValues[1])
+    assert.equal(properties.get('--sophia-highlight-3'), universalPaletteValues[2])
     assert.equal(
       properties.get('--sophia-pdf-highlight-1'),
       getPdfHighlightColorValue('night-study-v2-1'),
     )
     assert.equal(properties.get('--sophia-selection-text'), '#fffaf2')
-    assert.equal(storage.get('sophia-theme'), 'night-study')
+    assert.equal(storage.get('sophia-theme'), 'warm-paper')
   } finally {
     Reflect.deleteProperty(globalThis, 'document')
     Reflect.deleteProperty(globalThis, 'window')
@@ -192,6 +172,14 @@ test('applying a theme immediately updates selection CSS variables', () => {
 })
 
 test('legacy saved highlight tokens keep their previous colors', () => {
+  assert.equal(
+    getHighlightColorValue('printed-ink-v2-1'),
+    'rgba(214, 177, 106, 0.82)',
+  )
+  assert.equal(
+    getHighlightColorValue('warm-paper-v2-2'),
+    'rgba(116, 164, 105, 0.64)',
+  )
   assert.equal(
     getHighlightColorValue('printed-ink-1'),
     'rgba(214, 177, 106, 0.52)',
@@ -209,3 +197,4 @@ test('legacy saved highlight tokens keep their previous colors', () => {
   assert.equal(getHighlightColorValue('green'), 'rgba(52, 211, 153, 0.28)')
   assert.equal(getHighlightColorValue('rose'), 'rgba(251, 113, 133, 0.28)')
 })
+

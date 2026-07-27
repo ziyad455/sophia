@@ -2,78 +2,75 @@ export const themes = [
   {
     id: 'printed-ink',
     label: 'Printed Ink',
-    highlightColors: [
-      {
-        id: 'printed-ink-v2-1',
-        label: 'Printed Ink color 1',
-        value: 'rgba(214, 177, 106, 0.82)',
-        foreground: '#071019',
-      },
-      {
-        id: 'printed-ink-v2-2',
-        label: 'Printed Ink color 2',
-        value: 'rgba(145, 181, 139, 0.80)',
-        foreground: '#071019',
-      },
-      {
-        id: 'printed-ink-v2-3',
-        label: 'Printed Ink color 3',
-        value: 'rgba(135, 174, 196, 0.78)',
-        foreground: '#071019',
-      },
-    ],
   },
   {
     id: 'warm-paper',
     label: 'Warm Paper',
-    highlightColors: [
-      {
-        id: 'warm-paper-v2-1',
-        label: 'Warm Paper color 1',
-        value: 'rgba(205, 148, 64, 0.68)',
-        foreground: '#2b2118',
-      },
-      {
-        id: 'warm-paper-v2-2',
-        label: 'Warm Paper color 2',
-        value: 'rgba(116, 164, 105, 0.64)',
-        foreground: '#2b2118',
-      },
-      {
-        id: 'warm-paper-v2-3',
-        label: 'Warm Paper color 3',
-        value: 'rgba(190, 111, 105, 0.62)',
-        foreground: '#2b2118',
-      },
-    ],
   },
   {
     id: 'night-study',
     label: 'Night Study',
-    highlightColors: [
-      {
-        id: 'night-study-v2-1',
-        label: 'Night Study color 1',
-        value: 'rgba(117, 83, 32, 0.82)',
-        foreground: '#fffaf2',
-      },
-      {
-        id: 'night-study-v2-2',
-        label: 'Night Study color 2',
-        value: 'rgba(34, 91, 84, 0.82)',
-        foreground: '#fffaf2',
-      },
-      {
-        id: 'night-study-v2-3',
-        label: 'Night Study color 3',
-        value: 'rgba(91, 51, 79, 0.82)',
-        foreground: '#fffaf2',
-      },
-    ],
+  },
+] as const
+
+export const HIGHLIGHT_COLORS = [
+  {
+    id: 'night-study-v2-1',
+    label: 'Night Study color 1',
+    value: 'rgba(117, 83, 32, 0.82)',
+    foreground: '#fffaf2',
+  },
+  {
+    id: 'night-study-v2-2',
+    label: 'Night Study color 2',
+    value: 'rgba(34, 91, 84, 0.82)',
+    foreground: '#fffaf2',
+  },
+  {
+    id: 'night-study-v2-3',
+    label: 'Night Study color 3',
+    value: 'rgba(91, 51, 79, 0.82)',
+    foreground: '#fffaf2',
   },
 ] as const
 
 const legacyHighlightColors = [
+  {
+    id: 'printed-ink-v2-1',
+    label: 'Printed Ink color 1',
+    value: 'rgba(214, 177, 106, 0.82)',
+    foreground: '#071019',
+  },
+  {
+    id: 'printed-ink-v2-2',
+    label: 'Printed Ink color 2',
+    value: 'rgba(145, 181, 139, 0.80)',
+    foreground: '#071019',
+  },
+  {
+    id: 'printed-ink-v2-3',
+    label: 'Printed Ink color 3',
+    value: 'rgba(135, 174, 196, 0.78)',
+    foreground: '#071019',
+  },
+  {
+    id: 'warm-paper-v2-1',
+    label: 'Warm Paper color 1',
+    value: 'rgba(205, 148, 64, 0.68)',
+    foreground: '#2b2118',
+  },
+  {
+    id: 'warm-paper-v2-2',
+    label: 'Warm Paper color 2',
+    value: 'rgba(116, 164, 105, 0.64)',
+    foreground: '#2b2118',
+  },
+  {
+    id: 'warm-paper-v2-3',
+    label: 'Warm Paper color 3',
+    value: 'rgba(190, 111, 105, 0.62)',
+    foreground: '#2b2118',
+  },
   {
     id: 'printed-ink-1',
     label: 'Printed Ink color 1',
@@ -155,27 +152,22 @@ const legacyHighlightColors = [
 ] as const
 
 export type ThemeId = (typeof themes)[number]['id']
-export type ThemeHighlightColor = (typeof themes)[number]['highlightColors'][number]
-export type ThemeHighlightColorId = ThemeHighlightColor['id']
+export type UniversalHighlightColor = (typeof HIGHLIGHT_COLORS)[number]
+export type UniversalHighlightColorId = UniversalHighlightColor['id']
+export type HighlightColorOption = UniversalHighlightColor
+export type ThemeHighlightColor = UniversalHighlightColor
 export type LegacyHighlightColorId = (typeof legacyHighlightColors)[number]['id']
-export type HighlightColorId = ThemeHighlightColorId | LegacyHighlightColorId
+export type HighlightColorId = UniversalHighlightColorId | LegacyHighlightColorId
 type ThemeDefinition = (typeof themes)[number]
 type LegacyHighlightColor = (typeof legacyHighlightColors)[number]
-type HighlightColorDefinition = ThemeHighlightColor | LegacyHighlightColor
+type HighlightColorDefinition = UniversalHighlightColor | LegacyHighlightColor
 
 const themeById = new Map<ThemeId, ThemeDefinition>()
 
 themes.forEach((theme) => themeById.set(theme.id, theme))
 
-const themeHighlightColors = themes.reduce<ThemeHighlightColor[]>(
-  (colors, theme) => {
-    colors.push(...theme.highlightColors)
-    return colors
-  },
-  [],
-)
 const allHighlightColors: HighlightColorDefinition[] = [
-  ...themeHighlightColors,
+  ...HIGHLIGHT_COLORS,
   ...legacyHighlightColors,
 ]
 const highlightColorById = new Map<HighlightColorId, HighlightColorDefinition>()
@@ -187,6 +179,8 @@ export const HIGHLIGHT_COLOR_IDS: readonly HighlightColorId[] =
 
 const DEFAULT_THEME: ThemeId = 'printed-ink'
 const THEME_STORAGE_KEY = 'sophia-theme'
+export const DEFAULT_HIGHLIGHT_COLOR: UniversalHighlightColorId = HIGHLIGHT_COLORS[0].id
+
 const PDF_HIGHLIGHT_ALPHA_SCALE = 0.45
 const rgbaPattern =
   /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/
@@ -213,12 +207,8 @@ export function readStoredTheme(): ThemeId {
   return isThemeId(storedTheme) ? storedTheme : DEFAULT_THEME
 }
 
-export function getThemeHighlightColors(theme: ThemeId): readonly ThemeHighlightColor[] {
-  return themeById.get(theme)?.highlightColors ?? themes[0].highlightColors
-}
-
-export function getDefaultHighlightColor(theme: ThemeId): ThemeHighlightColorId {
-  return getThemeHighlightColors(theme)[0].id
+export function getDefaultHighlightColor(): UniversalHighlightColorId {
+  return DEFAULT_HIGHLIGHT_COLOR
 }
 
 export function isHighlightColorId(value: unknown): value is HighlightColorId {
@@ -243,10 +233,9 @@ export function getHighlightColorLabel(color: HighlightColorId): string {
 
 export function applyTheme(theme: ThemeId) {
   const root = document.documentElement
-  const definition = themeById.get(theme) ?? themes[0]
 
   root.dataset.theme = theme
-  definition.highlightColors.forEach((color, index) => {
+  HIGHLIGHT_COLORS.forEach((color, index) => {
     root.style.setProperty(`--sophia-highlight-${index + 1}`, color.value)
     root.style.setProperty(
       `--sophia-pdf-highlight-${index + 1}`,
@@ -255,7 +244,7 @@ export function applyTheme(theme: ThemeId) {
   })
   root.style.setProperty(
     '--sophia-selection-text',
-    definition.highlightColors[0].foreground,
+    HIGHLIGHT_COLORS[0].foreground,
   )
   window.localStorage.setItem(THEME_STORAGE_KEY, theme)
 }
@@ -263,3 +252,4 @@ export function applyTheme(theme: ThemeId) {
 export function applyStoredTheme() {
   applyTheme(readStoredTheme())
 }
+
