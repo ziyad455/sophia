@@ -1,7 +1,8 @@
 import { badRequest } from "../http/errors";
 import {
-  HIGHLIGHT_COLORS,
-  type HighlightColor,
+  DEFAULT_HIGHLIGHT_COLOR,
+  THEME_HIGHLIGHT_COLORS,
+  type ThemeHighlightColor,
   type HighlightMode,
   type PdfHighlightRect,
 } from "./highlights.types";
@@ -15,7 +16,7 @@ export type CreateHighlightDto = {
   sourceBlockId: string | null;
   startOffset: number | null;
   endOffset: number | null;
-  color: HighlightColor;
+  color: ThemeHighlightColor;
   pdfRects: PdfHighlightRect[];
 };
 
@@ -212,10 +213,13 @@ export function parseCreateHighlightDto(value: unknown): CreateHighlightDto {
     throw badRequest("PDF highlights cannot include a Reading Mode sourceBlockId.");
   }
 
-  const color = hasOwn(value, "color") ? value.color : "gold";
+  const color = hasOwn(value, "color") ? value.color : DEFAULT_HIGHLIGHT_COLOR;
 
-  if (typeof color !== "string" || !HIGHLIGHT_COLORS.includes(color as HighlightColor)) {
-    throw badRequest(`color must be one of: ${HIGHLIGHT_COLORS.join(", ")}.`);
+  if (
+    typeof color !== "string" ||
+    !THEME_HIGHLIGHT_COLORS.includes(color as ThemeHighlightColor)
+  ) {
+    throw badRequest(`color must be one of: ${THEME_HIGHLIGHT_COLORS.join(", ")}.`);
   }
 
   const pdfRects = parsePdfRects(value.pdfRects, pageStart, pageEnd);
@@ -233,7 +237,7 @@ export function parseCreateHighlightDto(value: unknown): CreateHighlightDto {
     sourceBlockId: sourceBlockId as string | null,
     startOffset,
     endOffset,
-    color: color as HighlightColor,
+    color: color as ThemeHighlightColor,
     pdfRects,
   };
 }

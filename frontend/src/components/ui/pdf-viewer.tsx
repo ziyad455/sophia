@@ -211,7 +211,6 @@ const PAGE_BASE_RENDER_MAX_SCALE = 1
 const PAGE_BASE_RENDER_DPR = 1
 const PDF_DOCUMENT_LOAD_TIMEOUT_MS = 30_000
 const PDF_SEARCH_DEBOUNCE_MS = 300
-const TEXT_SELECTION_BACKGROUND = "rgba(59, 130, 246, 0.14)"
 const THUMBNAIL_FOCUS_RING_CLASS =
   "group-focus-visible/pdf-thumbnail-sidebar:ring-2 group-focus-visible/pdf-thumbnail-sidebar:ring-ring group-focus-visible/pdf-thumbnail-sidebar:ring-offset-1 group-focus-visible/pdf-thumbnail-sidebar:ring-offset-background"
 
@@ -1323,7 +1322,7 @@ function PDFViewerScrollAreaViewport({
       <ScrollArea
         className={className}
         orientation="both"
-        viewportClassName="relative select-none selection:bg-transparent selection:text-inherit"
+        viewportClassName="relative select-none"
         viewportProps={{
           style: {
             padding: viewportGap,
@@ -1385,8 +1384,9 @@ function PDFViewerTextSelectionLayer({
         <div
           key={`${index}-${rect.origin.x}-${rect.origin.y}`}
           className="pointer-events-none absolute"
+          data-pdf-selection-overlay
           style={{
-            background: TEXT_SELECTION_BACKGROUND,
+            background: "var(--sophia-pdf-highlight-1)",
             height: rect.size.height * scale,
             left: rect.origin.x * scale,
             top: rect.origin.y * scale,
@@ -2450,7 +2450,7 @@ function PDFViewerInner({
             key={`${page.pageIndex}-${pageRotation}`}
             data-pdf-viewer-page={pageNumber}
             className={cn(
-              "relative border border-transparent bg-transparent shadow-xs select-none selection:bg-transparent selection:text-inherit",
+              "relative border border-transparent bg-transparent shadow-xs select-none",
               pageClassName?.(pageNumber)
             )}
             style={{ backgroundColor: "transparent" }}

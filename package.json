@@ -10,7 +10,8 @@
     "dev": "concurrently \"npm run dev --prefix frontend\" \"npm start --prefix backend\"",
     "frontend": "npm run dev --prefix frontend",
     "backend": "npm start --prefix backend",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "concurrently \"npm run build --prefix frontend\" \"npm run build --prefix backend\""
   },
   "repository": {
     "type": "git",

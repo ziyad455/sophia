@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpError } from "../http/errors";
 import { parseCreateHighlightDto } from "./highlights.dto";
+import { THEME_HIGHLIGHT_COLORS } from "./highlights.types";
 
 const pageId = "11111111-1111-4111-8111-111111111111";
 const chapterId = "22222222-2222-4222-8222-222222222222";
@@ -16,7 +17,7 @@ function validReadingHighlight() {
     sourceBlockId: `${pageId}:paragraph:3`,
     startOffset: 8,
     endOffset: 48,
-    color: "gold",
+    color: "printed-ink-v2-1",
     pdfRects: [],
   };
 }
@@ -32,7 +33,7 @@ test("parses and normalizes a stable Reading Mode highlight", () => {
 
   assert.equal(dto.text, "The unexamined life is not worth living.");
   assert.equal(dto.sourceBlockId, `${pageId}:paragraph:3`);
-  assert.equal(dto.color, "gold");
+  assert.equal(dto.color, "printed-ink-v2-1");
 });
 
 test("accepts a cross-block Reading Mode highlight without invented offsets", () => {
@@ -59,7 +60,7 @@ test("accepts validated PDF page coordinates", () => {
     sourceBlockId: null,
     startOffset: 40,
     endOffset: 55,
-    color: "blue",
+    color: "warm-paper-v2-2",
     pdfRects: [{ pageNumber: 4, x: 10.5, y: 20, width: 80, height: 14 }],
   });
 
@@ -77,6 +78,43 @@ test("rejects unsupported fields and arbitrary colors", () => {
     ...validReadingHighlight(),
     color: "#ff00ff",
   }));
+  assertBadRequest(() => parseCreateHighlightDto({
+    ...validReadingHighlight(),
+    color: "gold",
+  }));
+  assertBadRequest(() => parseCreateHighlightDto({
+    ...validReadingHighlight(),
+    color: "printed-ink-1",
+  }));
+});
+
+test("accepts exactly the nine theme-specific highlight colors", () => {
+  assert.deepEqual(THEME_HIGHLIGHT_COLORS, [
+    "printed-ink-v2-1",
+    "printed-ink-v2-2",
+    "printed-ink-v2-3",
+    "warm-paper-v2-1",
+    "warm-paper-v2-2",
+    "warm-paper-v2-3",
+    "night-study-v2-1",
+    "night-study-v2-2",
+    "night-study-v2-3",
+  ]);
+
+  for (const color of THEME_HIGHLIGHT_COLORS) {
+    assert.equal(
+      parseCreateHighlightDto({ ...validReadingHighlight(), color }).color,
+      color,
+    );
+  }
+});
+
+test("defaults an omitted color to the first Printed Ink color", () => {
+  const highlight = validReadingHighlight();
+
+  delete (highlight as Partial<typeof highlight>).color;
+
+  assert.equal(parseCreateHighlightDto(highlight).color, "printed-ink-v2-1");
 });
 
 test("rejects invalid ranges and incomplete source offsets", () => {

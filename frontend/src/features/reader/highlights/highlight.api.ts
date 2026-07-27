@@ -6,7 +6,7 @@ import type {
   PdfHighlightRect,
   ReaderHighlight,
 } from './highlight.types'
-import { HIGHLIGHT_COLORS } from './highlight.types'
+import { isHighlightColorId } from '../../../theme'
 
 export class HighlightsApiError extends Error {
   readonly status: number
@@ -69,11 +69,7 @@ function normalizeHighlight(value: unknown): ReaderHighlight | null {
   const mode: HighlightMode | null = value.mode === 'pdf' || value.mode === 'reading'
     ? value.mode
     : null
-  const color = typeof value.color === 'string' && HIGHLIGHT_COLORS.includes(
-    value.color as HighlightColor,
-  )
-    ? value.color as HighlightColor
-    : null
+  const color = isHighlightColorId(value.color) ? value.color : null
 
   if (
     typeof value.id !== 'string' ||

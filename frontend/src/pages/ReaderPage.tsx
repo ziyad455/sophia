@@ -70,6 +70,10 @@ import {
   useReaderPreferences,
 } from '../features/reader/preferences'
 import { PdfReadingMoodFilters } from '../features/reader/preferences/PdfReadingMoodFilters'
+import {
+  getDefaultHighlightColor,
+  getThemeHighlightColors,
+} from '../theme'
 
 type ReaderPageProps = {
   userBookId: string
@@ -166,7 +170,6 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   const [activeHighlightActionId, setActiveHighlightActionId] =
     useState<string | null>(null)
   const [highlightNotice, setHighlightNotice] = useState<string | null>(null)
-  const [previewColor, setPreviewColor] = useState<HighlightColor>('gold')
   const {
     isOpen: annotationsPanelOpen,
     activeTab: annotationsPanelTab,
@@ -193,6 +196,14 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
     updatePreferences,
     resetPreferences,
   } = useReaderPreferences()
+  const highlightColors = getThemeHighlightColors(preferences.readingMood)
+  const defaultHighlightColor = getDefaultHighlightColor(preferences.readingMood)
+  const [previewColor, setPreviewColor] =
+    useState<HighlightColor>(defaultHighlightColor)
+
+  useEffect(() => {
+    setPreviewColor(defaultHighlightColor)
+  }, [defaultHighlightColor])
   const {
     loadState: progressLoadState,
     queueSave: queueProgressSave,
@@ -234,20 +245,20 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
 
       if (previewSelectionKeyRef.current !== selectionKey) {
         previewSelectionKeyRef.current = selectionKey
-        setPreviewColor('gold')
+        setPreviewColor(defaultHighlightColor)
       }
     } else {
       previewSelectionKeyRef.current = null
-      setPreviewColor('gold')
+      setPreviewColor(defaultHighlightColor)
     }
 
     captureReaderSelection(result)
-  }, [captureReaderSelection])
+  }, [captureReaderSelection, defaultHighlightColor])
   const clearSelection = useCallback(() => {
     previewSelectionKeyRef.current = null
-    setPreviewColor('gold')
+    setPreviewColor(defaultHighlightColor)
     clearReaderSelection()
-  }, [clearReaderSelection])
+  }, [clearReaderSelection, defaultHighlightColor])
   const handleFullscreenChange = useCallback(() => {
     if (selection || selectionError) {
       clearSelection()
@@ -288,9 +299,9 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
   })
   const reportSelectionError = useCallback((message: string) => {
     previewSelectionKeyRef.current = null
-    setPreviewColor('gold')
+    setPreviewColor(defaultHighlightColor)
     reportReaderSelectionError(message)
-  }, [reportReaderSelectionError])
+  }, [defaultHighlightColor, reportReaderSelectionError])
   const highlightPreview = useMemo<HighlightPreview | null>(
     () => selection
       ? { selection, color: previewColor, temporary: true }
@@ -1549,6 +1560,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
           error={selectionError ?? (selection ? highlightMutationError : null)}
           saving={highlightSaving}
           color={previewColor}
+          colors={highlightColors}
           onColorChange={setPreviewColor}
           onHighlight={handleSaveHighlight}
           onAddNote={handleAddSelectionNote}

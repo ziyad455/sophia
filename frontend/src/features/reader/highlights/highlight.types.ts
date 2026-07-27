@@ -1,8 +1,12 @@
 import type { ReaderSelection } from '../selection'
+import {
+  HIGHLIGHT_COLOR_IDS,
+  type HighlightColorId,
+} from '../../../theme'
 
-export const HIGHLIGHT_COLORS = ['gold', 'blue', 'green', 'rose'] as const
+export const HIGHLIGHT_COLORS = HIGHLIGHT_COLOR_IDS
 
-export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
+export type HighlightColor = HighlightColorId
 export type HighlightMode = 'pdf' | 'reading'
 
 export type PdfHighlightRect = {

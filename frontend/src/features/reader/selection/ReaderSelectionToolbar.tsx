@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import type { CSSProperties, PointerEvent } from 'react'
 import { Highlighter, LoaderCircle, NotebookPen, X } from 'lucide-react'
 import type { HighlightColor } from '../highlights'
-import { HIGHLIGHT_COLORS } from '../highlights/highlight.types'
+import type { ThemeHighlightColor } from '../../../theme'
 import type { ReaderSelection } from './reader-selection.types'
 
 type ReaderSelectionToolbarProps = {
@@ -10,6 +10,7 @@ type ReaderSelectionToolbarProps = {
   error: string | null
   saving: boolean
   color: HighlightColor
+  colors: readonly ThemeHighlightColor[]
   onColorChange: (color: HighlightColor) => void
   onHighlight: () => void | Promise<void>
   onAddNote: () => void
@@ -83,6 +84,7 @@ export function ReaderSelectionToolbar({
   error,
   saving,
   color,
+  colors,
   onColorChange,
   onHighlight,
   onAddNote,
@@ -148,27 +150,20 @@ export function ReaderSelectionToolbar({
     >
       <span className="sr-only">{getSelectionLabel(selection)}</span>
       <div className="flex items-center gap-1" aria-label="Highlight color">
-        {HIGHLIGHT_COLORS.map((option) => (
+        {colors.map((option) => (
           <button
-            key={option}
+            key={option.id}
             type="button"
-            className={`grid h-9 w-9 place-items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary ${color === option ? 'bg-sophia-bg ring-1 ring-sophia-border' : 'hover:bg-sophia-bg'}`}
-            onClick={() => onColorChange(option)}
+            className={`grid h-9 w-9 place-items-center rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sophia-primary ${color === option.id ? 'bg-sophia-bg ring-1 ring-sophia-border' : 'hover:bg-sophia-bg'}`}
+            onClick={() => onColorChange(option.id)}
             disabled={saving}
-            aria-label={`Use ${option} highlight`}
-            aria-pressed={color === option}
-            title={`${option[0].toUpperCase()}${option.slice(1)}`}
+            aria-label={`Use ${option.label}`}
+            aria-pressed={color === option.id}
+            title={option.label}
           >
             <span
-              className={`h-4 w-4 rounded-[2px] border border-black/10 ${
-                option === 'gold'
-                  ? 'bg-amber-300'
-                  : option === 'blue'
-                    ? 'bg-sky-300'
-                    : option === 'green'
-                      ? 'bg-emerald-300'
-                      : 'bg-rose-300'
-              }`}
+              className="h-4 w-4 rounded-[2px] border border-black/10"
+              style={{ backgroundColor: option.value }}
               aria-hidden="true"
             />
           </button>

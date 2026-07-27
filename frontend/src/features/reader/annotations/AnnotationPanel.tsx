@@ -14,7 +14,10 @@ import {
 } from 'lucide-react'
 import type { ReaderChapter } from '../../../books'
 import type { ReaderHighlight } from '../highlights'
-import { highlightMarkClass } from '../highlights/highlight.utils'
+import {
+  highlightColorLabel,
+  highlightColorValue,
+} from '../highlights/highlight.utils'
 import type { ReaderNote } from '../notes'
 import { noteCanNavigate } from '../notes/note.utils'
 import { AnnotationList } from './AnnotationList'
@@ -470,10 +473,13 @@ export function AnnotationPanel({
             {selectedLinkedHighlight ? (
               <p className="mb-0 mt-3 inline-flex items-center gap-2 text-xs capitalize text-sophia-text-muted">
                 <span
-                  className={`h-3 w-3 rounded-[2px] border border-sophia-border ${highlightMarkClass[selectedLinkedHighlight.color]}`}
+                  className="h-3 w-3 rounded-[2px] border border-sophia-border"
+                  style={{
+                    backgroundColor: highlightColorValue(selectedLinkedHighlight.color),
+                  }}
                   aria-hidden="true"
                 />
-                Attached to a {selectedLinkedHighlight.color} highlight
+                Attached to a {highlightColorLabel(selectedLinkedHighlight.color)} highlight
               </p>
             ) : null}
 
