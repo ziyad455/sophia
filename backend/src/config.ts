@@ -1,4 +1,5 @@
 import path from "node:path";
+import { parseGeminiConfig } from "./ai/providers/gemini/gemini-config";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -109,6 +110,9 @@ export const config = {
   frontendOrigin: frontendOrigins[0],
   frontendOrigins,
   databaseUrl: process.env.DATABASE_URL,
+  ai: {
+    gemini: parseGeminiConfig(process.env),
+  },
   upload: {
     uploadDir: path.resolve(backendRoot, process.env.UPLOAD_DIR ?? "storage/uploads"),
     maxPdfUploadMb,

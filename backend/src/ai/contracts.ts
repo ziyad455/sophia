@@ -43,6 +43,7 @@ export type AIRequest<T = string> = {
   temperature?: number;
   maxOutputTokens?: number;
   output?: AIOutputRequirement<T>;
+  signal?: AbortSignal;
 };
 
 export const AI_FINISH_REASONS = [

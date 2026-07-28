@@ -84,3 +84,45 @@ schema-validation framework.
 - Streaming, retry/fallback policy, timeouts, prompts, context building, RAG,
   embeddings, memory, endpoints, and persistence remain separate future
   decisions.
+
+## ADR: Gemini Uses the GenerateContent Adapter
+
+Status: Accepted on 2026-07-28
+
+### Context
+
+Google's current GA JavaScript/TypeScript SDK is `@google/genai`. Google
+recommends the Interactions API for new projects, while `generateContent`
+remains supported. Sophia's S7-T1 provider interface is already unary and
+stateless; it has no stored interaction IDs, steps, background execution, or
+server-owned conversation state.
+
+### Decision
+
+- Use `@google/genai` with `models.generateContent` for the S7-T2 Gemini
+  adapter.
+- Keep SDK imports and response objects inside Gemini-specific adapter code.
+- Construct the SDK client only through explicit runtime composition.
+- Select model ID from validated server configuration rather than an adapter
+  default.
+- Use Gemini JSON Schema support as optional generation guidance, with
+  `AIRuntime` validation remaining authoritative.
+- Forward caller cancellation through the SDK's `AbortSignal` and enforce a
+  bounded adapter deadline.
+- Add the provider-neutral `AIRequest.signal` field and `cancelled` error code
+  because S7-T1 could not otherwise express the required cancellation
+  behavior.
+
+### Consequences
+
+- The existing provider-neutral product contract stays unary and does not gain
+  Gemini interaction state.
+- Future provider replacement remains possible without changing product
+  services.
+- Streaming, tools, and stateful interaction features require separate
+  decisions rather than leaking through an unrestricted provider-options
+  escape hatch.
+- SDK cancellation is client-side only and may not stop server processing or
+  billing.
+- Configured model compatibility, including optional sampling settings, must be
+  managed operationally.

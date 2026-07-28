@@ -262,3 +262,26 @@ test("normalizes unknown provider failures without exposing their message", asyn
       error.message.includes("secret") === false,
   );
 });
+
+test("rejects an already-cancelled request before invoking the provider", async () => {
+  const controller = new AbortController();
+  let providerCalls = 0;
+  const { runtime } = createRuntime(async () => {
+    providerCalls += 1;
+    return textResponse();
+  });
+
+  controller.abort();
+
+  await assert.rejects(
+    runtime.generate({
+      messages: [{ role: "user", content: "Explain this passage." }],
+      signal: controller.signal,
+    }),
+    (error: unknown) =>
+      error instanceof AIError &&
+      error.code === "cancelled" &&
+      error.retryable === false,
+  );
+  assert.equal(providerCalls, 0);
+});

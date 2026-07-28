@@ -5,6 +5,7 @@ export const AI_ERROR_CODES = [
   "provider_authentication",
   "rate_limited",
   "timeout",
+  "cancelled",
   "provider_unavailable",
   "content_filtered",
   "invalid_response",
