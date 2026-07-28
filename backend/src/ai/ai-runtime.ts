@@ -82,6 +82,13 @@ function validateRequest<T>(request: AIRequest<T>): void {
     throw invalidRequest("AI maxOutputTokens must be a positive integer.");
   }
 
+  if (
+    request.signal !== undefined &&
+    !(request.signal instanceof AbortSignal)
+  ) {
+    throw invalidRequest("AI signal must be an AbortSignal when provided.");
+  }
+
   if (request.output === undefined || request.output.type === "text") {
     return;
   }
@@ -188,6 +195,12 @@ export class AIRuntime {
 
   async generate<T = string>(request: AIRequest<T>): Promise<AIResponse<T>> {
     validateRequest(request);
+
+    if (request.signal?.aborted) {
+      throw new AIError("cancelled", "The AI request was cancelled.", {
+        retryable: false,
+      });
+    }
 
     const provider = this.#providers.get(this.#defaultProviderId);
     let providerResponse: AIProviderResponse;
