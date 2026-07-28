@@ -1247,7 +1247,7 @@ export function ReaderPage({ userBookId }: ReaderPageProps) {
         />
 
         {isFullscreen ? (
-          <div className="fixed right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-40">
+          <div className="fixed right-[max(1rem,env(safe-area-inset-right))] top-[max(1.5rem,calc(env(safe-area-inset-top)+0.5rem))] z-40 sm:top-[max(2rem,calc(env(safe-area-inset-top)+0.5rem))] lg:top-[max(3rem,calc(env(safe-area-inset-top)+0.5rem))]">
             <AnnotationsTrigger
               count={highlights.length + notes.length}
               hasError={Boolean(
