@@ -1,12 +1,15 @@
-# AI Runtime and Gemini Adapter
+# AI Runtime, Gemini Adapter, and Prompt Registry
 
 S7-T1 established Sophia's provider-neutral generation boundary. S7-T2 adds
-Gemini behind that boundary. Future product features depend on `AIRuntime`;
-only provider adapters and backend composition depend on `AIProvider`,
-`AIProviderRegistry`, or a provider SDK.
+Gemini behind that boundary. S7-T3 adds exact, code-defined prompt resolution
+in front of the runtime. Future product features will depend on
+`PromptRegistry` and `AIRuntime`; only provider adapters and backend composition
+depend on `AIProvider`, `AIProviderRegistry`, or a provider SDK.
 
-The runtime remains unary at the response level. Streaming, tools, prompts,
-context assembly, persistence, and retrieval are later tasks.
+The runtime remains unary at the response level. Streaming, tools, production
+prompts, context assembly, persistence, and retrieval are later tasks. S7-T3
+provides the prompt registry contract but deliberately registers no production
+prompt.
 
 ## Module Layout
 
@@ -19,6 +22,11 @@ backend/src/ai/
 ├── provider-registry.ts
 ├── structured-output.ts
 ├── ai-runtime.ts
+├── prompts/
+│   ├── contracts.ts
+│   ├── errors.ts
+│   ├── prompt-registry.ts
+│   └── index.ts
 ├── providers/
 │   └── gemini/
 │       ├── gemini-config.ts
@@ -237,18 +245,156 @@ Queued responses deliberately still pass through `AIRuntime` validation. This
 makes the fake useful for testing invalid-provider and structured-output paths,
 not only happy paths.
 
+## Versioned Prompt Registry
+
+`PromptRegistry` is a provider-neutral boundary between future feature services
+and `AIRuntime`:
+
+```text
+Feature service
+    ↓
+PromptRegistry.render(exact ID, exact version, unknown input)
+    ↓
+validated normalized AI messages
+    ↓
+AIRuntime
+    ↓
+AIProvider
+```
+
+The registry never calls `AIRuntime` or a provider. It performs no network,
+database, filesystem, environment, persistence, or logging work. It is
+explicitly instantiated, owns a private map, and has no global instance or
+import-time registration:
+
+```ts
+const promptRegistry = new PromptRegistry();
+```
+
+S7-T3 does not add this empty registry to backend application composition.
+Composition will become useful only when a later feature supplies an actual
+production definition.
+
+### Prompt Definition Contract
+
+Each code-defined `PromptDefinition<TInput>` contains:
+
+- a stable prompt ID
+- an explicit version
+- a concise internal description
+- an `inputSchema.validate(unknown)` function that reuses S7-T1's
+  `StructuredOutputValidationResult<T>`
+- a deterministic renderer that receives validated input and returns Sophia's
+  existing `AIMessage[]`
+
+The registry captures validator and renderer function references at
+registration. It does not return definitions, schemas, validators, raw input,
+or its internal collections.
+
+Prompt IDs follow the same stable lowercase identifier style as provider IDs:
+they start with a lowercase letter or number, contain only lowercase letters,
+numbers, `.`, `_`, or `-`, and are at most 64 characters.
+
+Prompt versions are canonical positive base-10 integer strings up to 80
+characters (`"1"`, `"2"`, and so on), matching the existing future
+`promptVersion` persistence metadata. `"latest"`, `"v1"`, zero, leading zeros,
+semantic-version ranges, aliases, rollout percentages, and registration order
+are not resolution mechanisms. Multiple versions of one ID may coexist, but an
+exact ID/version pair cannot be overwritten.
+
+### Render and Validation Boundary
+
+`PromptRegistry.render(promptId, promptVersion, input)`:
+
+1. validates the ID and version
+2. resolves only the exact registered pair
+3. validates `input` from `unknown`
+4. invokes the renderer with the validator's typed value
+5. validates the complete rendered message collection
+6. reconstructs allowlisted `role` and `content` fields
+7. returns a frozen result containing only `promptId`, `promptVersion`, and
+   frozen normalized messages
+
+Rendered output must be a non-empty array. Every entry must be a plain data
+record containing exactly a supported Sophia role and non-empty string content.
+The registry rejects unsupported roles, empty content, undefined or wrong
+types, unexpected fields, arrays, accessors, and class/provider SDK instances.
+It never drops, rewrites, or coerces an invalid message.
+
+Each render builds fresh result objects. Freezing prevents caller mutation, and
+capturing registered behavior prevents later mutation of the definition object
+from replacing the stored validator or renderer.
+
+### Prompt-Domain Errors and Privacy
+
+Prompt failures remain separate from `AIError`, HTTP status logic, and Gemini
+failures:
+
+| Code | Meaning |
+| --- | --- |
+| `invalid_prompt_id` | The ID is not a stable prompt identifier. |
+| `invalid_prompt_version` | The version is not a canonical positive integer string. |
+| `invalid_prompt_definition` | Registration received a malformed definition. |
+| `duplicate_prompt` | The exact ID/version pair is already registered. |
+| `prompt_not_found` | The exact ID/version pair is not registered. |
+| `invalid_prompt_input` | Unknown input failed the definition validator. |
+| `invalid_rendered_prompt` | The renderer returned invalid normalized messages. |
+| `prompt_render_failed` | The validator or renderer threw unexpectedly. |
+
+Public messages are fixed. Safe, already-validated prompt identity is included
+where useful, but raw input, validator issues, rendered messages, passages,
+notes, highlights, and reflections are not attached. Unexpected exceptions may
+be retained as a non-enumerable internal `cause`; callers must not serialize or
+log causes.
+
+Prompt input cannot select a provider, model, version alias, role, or arbitrary
+provider options through this contract. Definition validators must not accept
+message roles from input, and renderers should keep trusted instructions and
+untrusted content in separate normalized messages.
+
+The registry provides validation, structure, and reproducibility. It does not
+completely solve prompt injection: book text and user content remain untrusted
+data, and permissions or safety policy must be enforced in code rather than
+assumed from delimiters or instructions.
+
+### Prompt Tests and Evaluation
+
+Unit tests use only test definitions and verify registration, duplicate
+protection, exact versions, identity validation, input validation, deterministic
+rendering, strict message validation, mutation safety, exception privacy,
+definition validation, and instance isolation:
+
+```sh
+npm run test:prompts --prefix backend
+```
+
+The deterministic evaluation adds eleven cases for exact resolution,
+duplicates, multiple versions, missing definitions, invalid input,
+determinism, invalid messages, mutation safety, isolation, safe error content,
+and provider-neutral result fields:
+
+```sh
+npm run test:prompt-evals --prefix backend
+```
+
+The initial S7-T3 baseline is 11/11 cases passing. It uses no credentials,
+provider, SDK, or external call. This baseline checks architecture and
+deterministic behavior; it does not evaluate future philosophy prompt quality
+or prove that arbitrary third-party renderer code is deterministic.
+
 ## Context Boundary
 
-This task affects only the provider/runtime layer. It does not decide which
-context Sophia should send.
+S7-T3 adds prompt definition/resolution only. It does not decide which context
+Sophia should send.
 
-- Static product rules remain in repository context and future system prompts.
+- Static prompt instructions will live in later code-defined production
+  definitions.
 - Dynamic reading context remains selected passage, book/chapter data, notes,
   highlights, retrieved chunks, conversation state, and memory.
-- A later context builder and prompt composer will choose and separate those
-  layers before producing `AIRequest.messages`.
+- A later context builder will choose and separate those layers before passing
+  validated prompt input.
 
-No textual evidence or interpretive background is assembled by S7-T1.
+No textual evidence or interpretive background is assembled by S7-T3.
 
 ## Provider Adapter Obligations
 
@@ -395,6 +541,8 @@ the network:
 ```sh
 npm run test:gemini --prefix backend
 npm run test:ai-evals --prefix backend
+npm run test:prompts --prefix backend
+npm run test:prompt-evals --prefix backend
 ```
 
 The deterministic evaluation suite covers eleven adapter-boundary cases,
@@ -408,7 +556,7 @@ Not implemented here:
 
 - retries or provider fallback
 - streaming
-- prompts or task modes
+- production prompt definitions or task modes
 - chat or HTTP endpoints
 - summaries, explanations, or reflection behavior
 - RAG, embeddings, or memory
