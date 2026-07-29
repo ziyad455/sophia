@@ -24,4 +24,14 @@ export {
   type AIErrorOptions,
 } from "./errors";
 export { AIProviderRegistry } from "./provider-registry";
+export {
+  PROMPT_ERROR_CODES,
+  type PromptDefinition,
+  PromptError,
+  type PromptErrorCode,
+  type PromptErrorOptions,
+  type PromptInputSchema,
+  PromptRegistry,
+  type PromptRenderResult,
+} from "./prompts";
 export { validateStructuredOutput } from "./structured-output";
