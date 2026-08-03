@@ -23,6 +23,27 @@ export {
   type AIErrorCode,
   type AIErrorOptions,
 } from "./errors";
+export {
+  CONTEXT_ERROR_CODES,
+  CONTEXT_EXCLUSION_REASONS,
+  CONTEXT_KINDS,
+  CONTEXT_TRUNCATION_POLICIES,
+  ContextBuilder,
+  ContextError,
+  type ContextBlock,
+  type ContextBlockUsage,
+  type ContextBudget,
+  type ContextBuildRequest,
+  type ContextErrorCode,
+  type ContextErrorOptions,
+  type ContextExclusion,
+  type ContextExclusionReason,
+  type ContextKind,
+  type ContextPackage,
+  type ContextSource,
+  type ContextTruncationPolicy,
+  type IncludedContextBlock,
+} from "./context";
 export { AIProviderRegistry } from "./provider-registry";
 export {
   PROMPT_ERROR_CODES,

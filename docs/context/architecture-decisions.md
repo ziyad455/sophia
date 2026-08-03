@@ -177,3 +177,59 @@ feature consumer.
 - Context building, production philosophy prompts, prompt-quality evaluations,
   application composition, routes, persistence, analytics, and prompt editing
   remain later decisions.
+
+## ADR: Context Assembly Is Deterministic and Uses Pre-Authorized Blocks
+
+Status: Accepted on 2026-08-03
+
+### Context
+
+Future explanation, summary, reflection, and chat features need selected
+passages and relevant reading material without coupling source selection to a
+provider or mixing database access with prompt construction. Sophia has
+user-owned books, pages, highlights, and notes, but S7-T4 has no product feature
+service that can make an authorization or relevance decision. The ingestion
+chunker has an approximate word-based token heuristic, not an authoritative
+provider tokenizer or a reusable context contract.
+
+### Decision
+
+- Feature services must authenticate, authorize, load, and select candidate
+  records before passing them to `ContextBuilder`.
+- Represent candidates as Sophia-owned structured blocks with controlled
+  source kinds and provenance. Do not pass raw database entities, provider
+  payloads, storage paths, or arbitrary metadata.
+- Build synchronously and without database, filesystem, network, provider,
+  runtime, or prompt-registry calls.
+- Reject invalid input and duplicate block IDs. Sort required blocks first,
+  then by descending caller priority, fixed kind rank, and stable block ID.
+- Use exact Unicode code points as the explicit deterministic budget unit. Do
+  not describe that unit as model tokens or reuse the ingestion heuristic.
+- Require every explicitly required block to exist, be allowed, and fit whole.
+  Fail rather than silently remove or truncate required context.
+- Exclude optional overflow with content-free reasons. Permit visible
+  prefix-preserving truncation only when optional page/chapter candidates opt
+  in; never truncate selected passages, metadata, highlights, or notes.
+- Return frozen fresh structured blocks, controlled provenance, usage, budget,
+  and exclusions. Do not concatenate context into prompt text in the builder.
+- Use fixed privacy-safe context errors. Treat all candidate content as private
+  and potentially instruction-like data.
+
+### Consequences
+
+- Context assembly is reproducible without credentials, SDKs, network access,
+  or global mutable state.
+- Provider replacement and prompt versioning remain independent of source
+  selection and context budgeting.
+- Structured output preserves the evidence-to-source relationship needed for
+  future citations and audit records, while future prompt definitions retain
+  control over instruction/data separation.
+- Unicode code-point budgeting is intentionally conservative infrastructure,
+  not exact provider token accounting. A future tokenizer policy requires a
+  separate explicit decision and deterministic injection boundary.
+- Authorization correctness remains a caller responsibility. The builder
+  cannot prevent cross-user mixing if an upstream service supplies improperly
+  authorized candidates.
+- RAG chunks, retrieval/reranking, conversation history, long-term memory,
+  production prompts, application composition, routes, persistence, and UI
+  remain later decisions.
