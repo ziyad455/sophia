@@ -1,15 +1,17 @@
-# AI Runtime, Gemini Adapter, and Prompt Registry
+# AI Runtime, Gemini Adapter, Prompt Registry, and Context Builder
 
 S7-T1 established Sophia's provider-neutral generation boundary. S7-T2 adds
 Gemini behind that boundary. S7-T3 adds exact, code-defined prompt resolution
-in front of the runtime. Future product features will depend on
-`PromptRegistry` and `AIRuntime`; only provider adapters and backend composition
-depend on `AIProvider`, `AIProviderRegistry`, or a provider SDK.
+in front of the runtime. S7-T4 adds deterministic assembly of pre-authorized
+reading context. Future product features will use `ContextBuilder`,
+`PromptRegistry`, and `AIRuntime`; only provider adapters and backend
+composition depend on `AIProvider`, `AIProviderRegistry`, or a provider SDK.
 
 The runtime remains unary at the response level. Streaming, tools, production
-prompts, context assembly, persistence, and retrieval are later tasks. S7-T3
-provides the prompt registry contract but deliberately registers no production
-prompt.
+prompts, persistence, and retrieval are later tasks. S7-T3 provides the prompt
+registry contract but deliberately registers no production prompt. S7-T4
+provides the context contract but deliberately loads no records and adds no
+application wiring.
 
 ## Module Layout
 
@@ -26,6 +28,11 @@ backend/src/ai/
 │   ├── contracts.ts
 │   ├── errors.ts
 │   ├── prompt-registry.ts
+│   └── index.ts
+├── context/
+│   ├── contracts.ts
+│   ├── errors.ts
+│   ├── context-builder.ts
 │   └── index.ts
 ├── providers/
 │   └── gemini/
@@ -384,17 +391,135 @@ or prove that arbitrary third-party renderer code is deterministic.
 
 ## Context Boundary
 
-S7-T3 adds prompt definition/resolution only. It does not decide which context
-Sophia should send.
+`ContextBuilder` is a synchronous, provider-neutral boundary between an
+authorized feature service and future prompt construction:
 
-- Static prompt instructions will live in later code-defined production
-  definitions.
-- Dynamic reading context remains selected passage, book/chapter data, notes,
-  highlights, retrieved chunks, conversation state, and memory.
-- A later context builder will choose and separate those layers before passing
-  validated prompt input.
+```text
+Authorized feature service
+    ↓ pre-authorized candidate blocks
+ContextBuilder.build(request)
+    ↓ validated, ordered ContextPackage
+PromptRegistry
+    ↓ normalized messages
+AIRuntime
+    ↓
+AIProvider
+```
 
-No textual evidence or interpretive background is assembled by S7-T3.
+S7-T4 implements only the context-builder step. It does not call
+`PromptRegistry`, `AIRuntime`, a provider, the database, the filesystem, or the
+network. It owns no global state and does no import-time registration.
+
+### Authorization and Candidate Contract
+
+The caller must authenticate the user, verify ownership of every book and
+user-owned record, load the records, and decide which records are eligible.
+`ContextBuilder` has no repository access and cannot perform those checks. It
+must receive candidates that are already authorized for one request; callers
+must never combine records from different users.
+
+Each candidate has:
+
+- a stable block ID
+- one controlled kind
+- non-empty source content
+- an integer priority from 0 through 1,000
+- either `none` or the narrowly allowed `preserve_start` truncation policy
+- controlled provenance containing `bookId`, `userBookId`, and only the
+  page/chapter/highlight/note fields valid for that kind
+
+The supported kinds, in their fixed tie-break order, are:
+
+1. `selected_passage`
+2. `current_page`
+3. `surrounding_page`
+4. `current_chapter`
+5. `book_metadata`
+6. `highlight`
+7. `note`
+
+Retrieved chunks, RAG output, general background knowledge, conversation
+history, and memory are not S7-T4 candidate kinds. Raw database entities,
+storage paths, arbitrary metadata, provider fields, and executable callbacks
+are rejected rather than copied.
+
+### Ordering, Budgeting, and Truncation
+
+`build()` validates unknown input, rejects duplicate block IDs, and constructs
+a fresh ordering independent of candidate input order:
+
+1. required blocks first
+2. descending numeric priority
+3. fixed kind order above
+4. code-unit block-ID order
+
+Requiredness is explicit request policy through `requiredBlockIds`; no source
+kind is always required. Every required ID must exist and be allowed. Required
+content is included whole, and the build fails if its combined size exceeds
+the request budget.
+
+Budget units are exact Unicode code points in candidate content. This is a
+deterministic size control, not a tokenizer or model-token estimate. Requests
+are bounded to 100 candidates, 100,000 code points per candidate, and a
+100,000-code-point package budget.
+
+Optional blocks that do not fit are excluded with a content-free reason.
+Optional `current_page`, `surrounding_page`, and `current_chapter` blocks may
+explicitly opt into `preserve_start`. That policy keeps a code-point-safe
+prefix and appends `\n[context truncated]` inside the budget. Required blocks,
+selected passages, book metadata, highlights, and notes are never truncated.
+
+### Result, Errors, and Privacy
+
+The frozen `ContextPackage` returns:
+
+- ordered, freshly copied blocks
+- controlled provenance for each included block
+- original/included code-point usage and truncation state per block
+- package limit, consumed, and remaining usage
+- content-free optional exclusion records
+
+It deliberately returns no combined prompt string, normalized messages,
+provider/model selection, raw entity, schema, storage metadata, or logging
+payload. Keeping blocks structured preserves provenance for later citations
+and lets a future prompt definition decide how trusted instructions and
+untrusted source material are separated.
+
+Context errors use stable context-domain codes and fixed public messages. Safe
+block identity and kind may be attached when useful; source content, provenance
+objects, validation details, and unexpected exception messages are not. An
+unexpected cause is retained only as an internal `Error.cause` and must not be
+serialized or logged.
+
+Book text, highlights, and notes are untrusted data even after authorization.
+The builder validates and packages them but does not interpret or execute their
+contents. It reduces accidental instruction/data mixing by returning structured
+blocks; it does not solve prompt injection. Future prompt construction must
+preserve that separation, and future retrieval must apply the same ownership
+boundary before creating candidates.
+
+### Context Tests and Evaluation
+
+Focused unit and deterministic evaluation scripts are:
+
+```sh
+npm run test:contexts --prefix backend
+npm run test:context-evals --prefix backend
+npm run test:context-all --prefix backend
+```
+
+The unit suite covers strict validation, ordering, duplicates, required and
+optional behavior, Unicode budgeting, truncation, provenance, frozen fresh
+results, privacy-safe failures, and instance isolation. The evaluation suite
+defines thirteen no-network cases for valid assembly, stable ordering,
+determinism, duplicates, invalid input, budget enforcement, required content,
+optional exclusion, truncation, provenance, privacy, provider neutrality, and
+instruction-like source content.
+
+These tests validate infrastructure behavior; they do not measure philosophy
+answer quality, exact provider token usage, retrieval relevance, citation
+quality, or prompt-injection resistance. No production source selection,
+prompt definition, endpoint, persistence, or UI is included in S7-T4.
 
 ## Provider Adapter Obligations
 
@@ -557,6 +682,7 @@ Not implemented here:
 - retries or provider fallback
 - streaming
 - production prompt definitions or task modes
+- production context selection or application wiring
 - chat or HTTP endpoints
 - summaries, explanations, or reflection behavior
 - RAG, embeddings, or memory
