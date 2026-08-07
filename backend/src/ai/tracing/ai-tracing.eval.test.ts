@@ -87,7 +87,7 @@ const summaryOutput: StructuredOutputDefinition<{ summary: string }> = {
   },
 };
 
-test("trace eval 01: one trace correlates all future evaluation metadata", async () => {
+test("S7-TRACE-001 [trace]: one trace correlates evaluation metadata", async () => {
   const privatePassage = "EVAL_PRIVATE_PASSAGE";
   const context = new ContextBuilder().build({
     blocks: [{
@@ -161,7 +161,7 @@ test("trace eval 01: one trace correlates all future evaluation metadata", async
   assert.equal(serialized.includes("PRIVATE_RESULT"), false);
 });
 
-test("trace eval 02: normalized failure is finalized once", async () => {
+test("S7-TRACE-002 [trace]: normalized failure is finalized once", async () => {
   const failure = new AIError("provider_unavailable", "PRIVATE_FAILURE", {
     providerId: "fake",
     retryable: true,
@@ -181,7 +181,7 @@ test("trace eval 02: normalized failure is finalized once", async () => {
   assert.equal(sink.traces[0]?.retryable, true);
 });
 
-test("trace eval 03: cancellation is distinct and finalized once", async () => {
+test("S7-TRACE-003 [trace]: cancellation is distinct and finalized once", async () => {
   const controller = new AbortController();
   const { provider, runtime, sink } = createEvalRuntime();
 
@@ -201,7 +201,7 @@ test("trace eval 03: cancellation is distinct and finalized once", async () => {
   assert.equal(sink.traces[0]?.status, "cancelled");
 });
 
-test("trace eval 04: missing provider usage remains absent", async () => {
+test("S7-TRACE-004 [trace]: missing provider usage remains absent", async () => {
   const { provider, runtime, sink } = createEvalRuntime();
 
   provider.enqueueResponse({
@@ -218,7 +218,7 @@ test("trace eval 04: missing provider usage remains absent", async () => {
   assert.equal(Object.hasOwn(sink.traces[0] ?? {}, "usage"), false);
 });
 
-test("trace eval 05: extra caller metadata cannot enter a trace", async () => {
+test("S7-TRACE-005 [trace]: extra caller metadata cannot enter a trace", async () => {
   const privateValues = [
     "PRIVATE_NOTE",
     "PRIVATE_HIGHLIGHT",
@@ -244,7 +244,7 @@ test("trace eval 05: extra caller metadata cannot enter a trace", async () => {
   }
 });
 
-test("trace eval 06: hostile metadata access does not change AI behavior", async () => {
+test("S7-TRACE-006 [trace]: hostile metadata does not change AI behavior", async () => {
   const metadata = new Proxy(
     {},
     {
@@ -268,7 +268,7 @@ test("trace eval 06: hostile metadata access does not change AI behavior", async
   );
 });
 
-test("trace eval 07: sink failure preserves success and original failure", async () => {
+test("S7-TRACE-007 [trace]: sink failure preserves AI outcomes", async () => {
   const failingSink = new InMemoryAITraceSink({
     recordError: new Error("Synthetic sink failure."),
   });
@@ -296,7 +296,7 @@ test("trace eval 07: sink failure preserves success and original failure", async
   assert.equal(failingSink.traces.length, 0);
 });
 
-test("trace eval 08: in-memory sinks are isolated, inspectable, and resettable", async () => {
+test("S7-TRACE-008 [trace]: in-memory sinks are isolated and resettable", async () => {
   const first = createEvalRuntime({ traceId: "first" });
   const second = createEvalRuntime({ traceId: "second" });
 

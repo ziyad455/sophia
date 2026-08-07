@@ -810,6 +810,58 @@ outcomes, private-data exclusion, and best-effort instrumentation. No live
 integration test is included; adding one later must be explicit opt-in,
 credential-gated, and excluded from normal CI.
 
+## Deterministic Evaluation Seeds
+
+Sprint 7 evaluations verify system behavior, not philosophical answer quality.
+
+Unit tests protect individual contracts and edge cases. Evaluations protect
+stable behavior across the AI harness and make regressions diagnosable through
+globally unique case IDs. They remain ordinary `node:test` files beside the
+code they evaluate; Sophia does not need a second runner, result database,
+dashboard, or benchmarking dependency.
+
+Run the complete evaluation baseline with:
+
+```sh
+npm run eval:ai --prefix backend
+```
+
+`test:ai-evals` is retained as an alias. The command compiles once, runs every
+deterministic evaluation, prints each case ID through Node's TAP reporter, and
+exits non-zero when a case fails. Current categories cover runtime behavior,
+the fake Gemini transport, prompt versions, context policy, structured output,
+trace metadata, cross-layer composition, provider replacement, and privacy.
+
+All fixtures are synthetic and local. Evaluation code must not use credentials,
+environment-selected providers, real user data, copyrighted passages, network
+calls, live Gemini responses, large snapshots, or persisted result artifacts.
+Malformed JSON stays at the fake Gemini transport boundary because
+provider-neutral fake responses already contain parsed `unknown` values;
+application validators cover missing fields, wrong shapes, nesting, enums, and
+bounds through `FakeAIProvider`.
+
+The cross-layer seed resolves an exact test prompt, builds deterministic
+pre-authorized context, sends normalized messages through `AIRuntime` and a
+fake provider, validates an exact structured-output definition, and correlates
+the result with an in-memory trace. A companion seed runs the same flow through
+two fake provider identities and verifies that prompt, context, output, and
+feature-facing result shape do not change.
+
+Privacy seeds allow unique synthetic passage, note, and response markers only
+inside controlled in-memory request/result objects. Traces, safe errors,
+operational metadata, and serialized evaluation summaries must contain only
+allowlisted case identity, category, status, and normalized metadata. There is
+no AI logger today; any future logger or persistent result sink must satisfy the
+same exclusion rule before joining this command.
+
+Sprint 8 may add separately identified feature-quality evaluations for passage
+explanation, concept clarification, chapter summary, or philosophical
+discussion. Those future cases may assess correctness, grounding, relevance,
+citation quality, clarity, and refusal behavior, but they must not weaken or
+replace this deterministic infrastructure baseline. S7-T7 deliberately adds
+no subjective score, model judge, semantic metric, latency threshold, prompt
+optimizer, or live-provider comparison.
+
 ## Current Boundaries
 
 Not implemented here:
