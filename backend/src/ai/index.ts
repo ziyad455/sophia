@@ -13,6 +13,9 @@ export {
   type AIStructuredOutput,
   type AITextOutput,
   type AIUsage,
+  type StructuredOutputDefinition,
+  type StructuredOutputRequest,
+  type StructuredOutputResult,
   type StructuredOutputSchema,
   type StructuredOutputValidationResult,
 } from "./contracts";

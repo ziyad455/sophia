@@ -28,6 +28,14 @@ export type StructuredOutputSchema<T> = {
   validate: (value: unknown) => StructuredOutputValidationResult<T>;
 };
 
+export type StructuredOutputDefinition<T> = Readonly<{
+  id: string;
+  version: string;
+  description: string;
+  schema: Readonly<Pick<StructuredOutputSchema<T>, "validate">>;
+  jsonSchema?: StructuredOutputSchema<T>["jsonSchema"];
+}>;
+
 export type AIOutputRequirement<T> =
   | {
       type: "text";
@@ -46,6 +54,10 @@ export type AIRequest<T = string> = {
   signal?: AbortSignal;
 };
 
+export type StructuredOutputRequest<T> = Omit<AIRequest<T>, "output"> & {
+  output: StructuredOutputDefinition<T>;
+};
+
 export const AI_FINISH_REASONS = [
   "stop",
   "length",
@@ -60,6 +72,16 @@ export type AIUsage = {
   outputTokens: number;
   totalTokens: number;
 };
+
+export type StructuredOutputResult<T> = Readonly<{
+  outputId: string;
+  outputVersion: string;
+  data: T;
+  providerId: string;
+  model: string;
+  finishReason: AIFinishReason;
+  usage?: AIUsage;
+}>;
 
 export type AITextOutput = {
   type: "text";

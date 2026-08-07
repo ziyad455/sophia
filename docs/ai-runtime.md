@@ -135,67 +135,116 @@ token counters into these contracts.
 
 ## Structured Output
 
-Sophia does not depend on a schema library in this foundation. A structured
-schema supplies:
+S7-T1 supplies the low-level `StructuredOutputSchema<T>` used by providers and
+`AIRuntime.generate`. S7-T5 adds the application-facing
+`StructuredOutputDefinition<T>` around that trust boundary. A definition owns:
 
-- a stable name
-- an optional description
-- an optional provider-neutral JSON Schema hint
-- an authoritative validator that returns either typed data or issues
+- a stable output ID
+- an explicit exact version
+- a concise internal description
+- the authoritative runtime validator
+- optional provider-neutral JSON Schema guidance
+
+Definitions are code-owned and directly imported by a feature. There is no
+structured-output registry, global mutable state, import-time registration, or
+silent latest-version lookup. Separate `...V1` and `...V2` constants may
+coexist, and the caller must choose one explicitly.
 
 ```ts
-import type { StructuredOutputSchema } from "./ai";
+import type { StructuredOutputDefinition } from "./ai";
 
-type Reflection = {
-  question: string;
+type SimpleSummaryResult = {
+  summary: string;
 };
 
-const reflectionSchema: StructuredOutputSchema<Reflection> = {
-  name: "reflection",
+const simpleSummaryOutputV1: StructuredOutputDefinition<SimpleSummaryResult> = {
+  id: "simple-summary-result",
+  version: "1",
+  description: "A bounded synthetic output used to illustrate the contract.",
+  schema: {
+    validate(value) {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value) &&
+        typeof (value as Record<string, unknown>).summary === "string" &&
+        (value as Record<string, string>).summary.length <= 200
+      ) {
+        return {
+          success: true,
+          value: {
+            summary: (value as Record<string, string>).summary,
+          },
+        };
+      }
+
+      return {
+        success: false,
+        issues: ["summary must be a string of at most 200 characters"],
+      };
+    },
+  },
   jsonSchema: {
     type: "object",
-    required: ["question"],
+    required: ["summary"],
     properties: {
-      question: { type: "string" },
+      summary: { type: "string" },
     },
     additionalProperties: false,
   },
-  validate(value) {
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      typeof (value as Record<string, unknown>).question === "string"
-    ) {
-      return {
-        success: true,
-        value: {
-          question: (value as Record<string, string>).question,
-        },
-      };
-    }
-
-    return {
-      success: false,
-      issues: ["question must be a string"],
-    };
-  },
 };
 
-const result = await aiRuntime.generate<Reflection>({
-  messages: [{ role: "user", content: "Ask one reflection question." }],
-  output: {
-    type: "structured",
-    schema: reflectionSchema,
-  },
+const result = await aiRuntime.generateStructured({
+  messages: [{ role: "user", content: "Return the synthetic result." }],
+  output: simpleSummaryOutputV1,
 });
+
+result.data.summary;
 ```
 
-An adapter may use `jsonSchema` to request native structured generation, but
-provider enforcement is never trusted as the final check. `AIRuntime` validates
-the returned value and only then returns typed data.
+`generateStructured` validates and captures the definition before invoking a
+provider, delegates to the existing `generate` path, and returns direct trusted
+`data` with `outputId`, `outputVersion`, provider/model identity, finish reason,
+and optional normalized usage. Consumers do not parse JSON, cast the result,
+inspect an SDK response, or validate a second time.
 
-Validator issues should name fields and constraints without copying private
-model output into error details.
+The full future flow is:
+
+```text
+Feature
+    ↓
+ContextBuilder
+    ↓
+PromptRegistry
+    ↓
+Structured Output Definition
+    ↓
+AIRuntime
+    ↓
+AIProvider
+    ↓
+candidate result
+    ↓
+Sophia runtime validation
+    ↓
+trusted domain result
+```
+
+The provider may use `jsonSchema` to guide native structured generation, but it
+is not a trust decision and is not required to mirror every runtime-only bound.
+Gemini-specific subset checks remain inside `GeminiProvider`. Provider adapters
+parse their own wire representation into `unknown`; the application validator
+runs once in `AIRuntime` and is the only step that establishes trust.
+
+Validators explicitly own strict object fields, nested shapes, enums, string
+and array bounds, finite numeric ranges, and any deliberate normalization. The
+runtime does not invent fields, coerce types, repair JSON, retry, migrate, or
+ask a model to correct invalid data.
+
+Invalid structured data uses `invalid_output`. Validator issue strings and raw
+generated values are never copied into public error details. Unexpected
+validator exceptions remain internal causes under the existing diagnostics
+policy; runtime messages remain fixed and private-content-free.
 
 ## Normalized Errors
 
@@ -213,7 +262,8 @@ to transport behavior without making this runtime depend on Express.
 | `cancelled` | The caller cancelled the operation. |
 | `provider_unavailable` | A known temporary provider outage occurred. |
 | `content_filtered` | A provider blocked output under its safety policy. |
-| `invalid_response` | Provider metadata, output mode, or structured data was invalid. |
+| `invalid_output` | A requested structured result was empty, malformed, or failed application validation. |
+| `invalid_response` | Provider metadata or the normalized response envelope was invalid. |
 | `provider_failure` | An otherwise unknown provider failure occurred. |
 
 Provider adapters should translate known SDK errors into `AIError` and set
@@ -250,7 +300,10 @@ provider.enqueueResponse({
 
 Queued responses deliberately still pass through `AIRuntime` validation. This
 makes the fake useful for testing invalid-provider and structured-output paths,
-not only happy paths.
+not only happy paths. Tests can queue valid or arbitrary unknown structured
+values, missing fields, oversized values, or provider errors. Malformed JSON is
+tested at the adapter boundary because provider-neutral responses contain a
+parsed `unknown` value rather than provider wire text.
 
 ## Versioned Prompt Registry
 
@@ -628,7 +681,8 @@ For structured output:
 
 Malformed JSON, empty output, unsupported schema guidance, and wrong-shaped
 values fail with safe normalized errors. Generated output is not copied into
-error messages.
+error messages. Empty/malformed/wrong-shaped structured values use
+`invalid_output`; malformed SDK response metadata remains `invalid_response`.
 
 ### Errors, Cancellation, and Privacy
 
@@ -666,14 +720,17 @@ the network:
 ```sh
 npm run test:gemini --prefix backend
 npm run test:ai-evals --prefix backend
+npm run test:structured-output-all --prefix backend
 npm run test:prompts --prefix backend
 npm run test:prompt-evals --prefix backend
 ```
 
-The deterministic evaluation suite covers eleven adapter-boundary cases,
-including provider replacement. No live integration test is included in S7-T2;
-adding one later must be explicit opt-in, credential-gated, and excluded from
-normal CI.
+The deterministic evaluation suite covers the existing eleven adapter-boundary
+cases plus ten structured-contract cases for valid typed data, incorrect shape,
+nested validation, bounds, enums, safe errors, exact versions, provider
+replacement, provider failure categories, and raw-response exclusion. No live
+integration test is included; adding one later must be explicit opt-in,
+credential-gated, and excluded from normal CI.
 
 ## Current Boundaries
 
@@ -682,6 +739,7 @@ Not implemented here:
 - retries or provider fallback
 - streaming
 - production prompt definitions or task modes
+- production structured-output definitions
 - production context selection or application wiring
 - chat or HTTP endpoints
 - summaries, explanations, or reflection behavior

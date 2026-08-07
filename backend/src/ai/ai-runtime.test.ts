@@ -199,7 +199,7 @@ test("requires provider output to match the requested output mode", async () => 
         schema: structuredSchema,
       },
     }),
-    hasAIError("invalid_response"),
+    hasAIError("invalid_output"),
   );
 });
 
