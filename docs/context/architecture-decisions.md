@@ -289,3 +289,54 @@ Those behaviors could expose generated private content or raw runtime failures.
   an adapter test because provider-neutral responses already contain `unknown`.
 - No production philosophy output, prompt, route, UI, persistence, RAG, memory,
   streaming, retry, fallback, or repair behavior is introduced.
+
+## ADR: AI Tracing Uses an Instance-Owned Metadata Sink
+
+Status: Accepted on 2026-08-07
+
+### Context
+
+The provider-neutral runtime now has exact prompt, context, structured-output,
+provider, usage, and normalized error boundaries, but no request correlation,
+duration measurement, structured logger, or trace persistence. Sophia's future
+AI features and evaluations need to compare behavior without exposing private
+book passages, notes, highlights, reflections, questions, or generated output.
+The MVP has no trace-query feature, retention policy, or audit-grade delivery
+requirement.
+
+### Decision
+
+- Add an optional `AITraceSink` to each explicitly composed `AIRuntime`; do not
+  create global trace state or couple the runtime to Prisma, a provider, or a
+  logging/telemetry framework.
+- Give each configured execution a server-generated UUID, ISO wall timestamps,
+  and monotonic duration, ending exactly once as success, failure, or cancelled.
+- Keep call metadata separate from `AIRequest` so it cannot reach providers.
+  Reconstruct prompt identity and context statistics from controlled fields,
+  and capture structured-output identity from the validated S7-T5 definition.
+- Record only normalized provider/model/finish/usage and normalized error code
+  and retryability. Omit usage unless the provider reports the complete
+  normalized counters.
+- Do not record messages, prompt inputs, context content/provenance, generated
+  output, validator issues, raw provider errors/responses, SDK values,
+  credentials, storage paths, or user/book/resource identifiers.
+- Treat trace setup, completion, and sink recording as best-effort. Their
+  failures cannot replace the AI result or authoritative original error. Do not
+  add console logging where no safe structured logger exists.
+- Provide a deterministic in-memory sink plus injectable clock/ID sources for
+  offline tests. Production defaults remain server-owned.
+- Do not persist traces in S7-T6. Revisit storage only with a concrete query,
+  ownership/access model, retention/deletion policy, and delivery requirement.
+
+### Consequences
+
+- Future S7-T7 evaluations can correlate prompt/output versions, provider/model,
+  context budget statistics, latency, usage, and outcome without retaining
+  private philosophical reading content.
+- Future structured logger, database, or telemetry implementations can satisfy
+  `AITraceSink` without changing runtime execution or provider adapters.
+- Best-effort delivery is appropriate for operational MVP instrumentation but
+  is not an audit log. A future audit-grade requirement needs a separate
+  reliability and persistence design.
+- Trace IDs remain visible through the sink boundary rather than changing the
+  existing AI result/error contracts or product APIs.

@@ -1,4 +1,4 @@
-# AI Runtime, Gemini Adapter, Prompt Registry, and Context Builder
+# AI Runtime Foundation
 
 S7-T1 established Sophia's provider-neutral generation boundary. S7-T2 adds
 Gemini behind that boundary. S7-T3 adds exact, code-defined prompt resolution
@@ -6,6 +6,8 @@ in front of the runtime. S7-T4 adds deterministic assembly of pre-authorized
 reading context. Future product features will use `ContextBuilder`,
 `PromptRegistry`, and `AIRuntime`; only provider adapters and backend
 composition depend on `AIProvider`, `AIProviderRegistry`, or a provider SDK.
+S7-T5 adds exact structured-output identity and runtime validation. S7-T6 adds
+provider-neutral, metadata-first execution tracing around the runtime.
 
 The runtime remains unary at the response level. Streaming, tools, production
 prompts, persistence, and retrieval are later tasks. S7-T3 provides the prompt
@@ -33,6 +35,12 @@ backend/src/ai/
 │   ├── contracts.ts
 │   ├── errors.ts
 │   ├── context-builder.ts
+│   └── index.ts
+├── tracing/
+│   ├── contracts.ts
+│   ├── context-metadata.ts
+│   ├── in-memory-ai-trace-sink.ts
+│   ├── trace-metadata.ts
 │   └── index.ts
 ├── providers/
 │   └── gemini/
@@ -203,7 +211,7 @@ result.data.summary;
 ```
 
 `generateStructured` validates and captures the definition before invoking a
-provider, delegates to the existing `generate` path, and returns direct trusted
+provider, uses the runtime's shared validated execution path, and returns direct trusted
 `data` with `outputId`, `outputVersion`, provider/model identity, finish reason,
 and optional normalized usage. Consumers do not parse JSON, cast the result,
 inspect an SDK response, or validate a second time.
@@ -574,6 +582,76 @@ answer quality, exact provider token usage, retrieval relevance, citation
 quality, or prompt-injection resistance. No production source selection,
 prompt definition, endpoint, persistence, or UI is included in S7-T4.
 
+## AI Trace Boundary
+
+S7-T6 makes each configured `AIRuntime` execution observable without changing
+provider selection, prompt/context construction, retries, validation, results,
+or errors. Tracing is optional and instance-owned. Application composition may
+inject an `AITraceSink`; there is no global sink and the runtime does not depend
+on Prisma, a logging framework, OpenTelemetry, or a provider SDK.
+
+Each traced operation starts with a server-generated UUID and wall-clock start
+time. Completion uses a second wall time plus monotonic elapsed time. The
+terminal status is exactly one of `success`, `failure`, or `cancelled`, and one
+completed trace is offered to the sink. ID and clock injection exist for
+deterministic tests; production defaults use `randomUUID()` and
+`performance.now()`.
+
+The trace contract can contain:
+
+- trace and controlled operation identity
+- ISO start/completion timestamps and monotonic duration
+- prompt ID/version supplied by the feature
+- S7-T4 block count, controlled kinds, Unicode-code-point budget, truncation,
+  and exclusion counts
+- S7-T5 structured-output ID/version captured by `generateStructured`
+- normalized provider/model/finish reason
+- complete normalized usage only when the provider actually reports it
+- terminal status and normalized error code/retryability
+
+Safe call metadata is a second runtime argument, separate from `AIRequest`, and
+is reconstructed from allowlisted fields. It is never forwarded to a provider.
+Feature code should use stable code-owned operation names and the exact identity
+returned by `PromptRegistry`; it should derive context statistics with
+`createAITraceContextMetadata` rather than constructing content-bearing
+metadata.
+
+AI traces are metadata-first and must not contain private prompt, book, note, highlight, reflection, or response content by default.
+
+Traces also exclude rendered messages, prompt inputs, context content and
+provenance, user/book/resource identifiers, generated values, validator issues,
+raw provider errors and responses, SDK objects, credentials, filesystem paths,
+and authorization data. Error traces copy only the existing normalized code,
+retryability, and safe provider identity. Missing usage is omitted rather than
+estimated.
+
+Tracing is best-effort operational instrumentation. Trace setup, completion,
+or sink failures are contained and cannot replace a successful AI result or the
+authoritative original AI error. With no existing safe structured logger, these
+secondary failures are intentionally not written to `console`, avoiding both
+recursive logging and accidental private-data exposure.
+
+No trace persistence is included. Sophia currently has no production AI
+consumer, retention policy, trace-query requirement, or audit-grade delivery
+requirement that would justify a Prisma model and privacy lifecycle. A later
+logger, database, or telemetry sink can implement `AITraceSink` after its own
+retention and access decision without changing `AIRuntime`.
+
+Focused deterministic commands are:
+
+```sh
+npm run test:tracing --prefix backend
+npm run test:tracing-evals --prefix backend
+npm run test:tracing-all --prefix backend
+```
+
+The unit suite covers lifecycle, identity, safe prompt/context/output/provider
+metadata, usage presence/absence, normalized failures, invalid output,
+cancellation, synthetic-secret exclusion, instrumentation failure isolation,
+and instance isolation. The offline evaluation matrix proves the metadata
+needed to correlate future S7-T7 cases without implementing seeds, scoring, or
+philosophical-quality judgments.
+
 ## Provider Adapter Obligations
 
 A future real adapter must:
@@ -723,12 +801,12 @@ npm run test:ai-evals --prefix backend
 npm run test:structured-output-all --prefix backend
 npm run test:prompts --prefix backend
 npm run test:prompt-evals --prefix backend
+npm run test:tracing-all --prefix backend
 ```
 
-The deterministic evaluation suite covers the existing eleven adapter-boundary
-cases plus ten structured-contract cases for valid typed data, incorrect shape,
-nested validation, bounds, enums, safe errors, exact versions, provider
-replacement, provider failure categories, and raw-response exclusion. No live
+The deterministic evaluation suite covers the adapter, structured-output, and
+trace boundaries, including future evaluation correlation, safe lifecycle
+outcomes, private-data exclusion, and best-effort instrumentation. No live
 integration test is included; adding one later must be explicit opt-in,
 credential-gated, and excluded from normal CI.
 
