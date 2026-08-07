@@ -53,7 +53,7 @@ const textRequest: AIRequest = {
   messages: [{ role: "user", content: "Evaluate this argument." }],
 };
 
-test("eval 01: Sophia text request maps to Gemini roles", async () => {
+test("S7-GEMINI-001 [gemini]: Sophia text request maps to Gemini roles", async () => {
   const requests: GeminiGenerateContentRequest[] = [];
   const provider = createProvider(
     async () => ({
@@ -79,7 +79,7 @@ test("eval 01: Sophia text request maps to Gemini roles", async () => {
   ]);
 });
 
-test("eval 02: Gemini text response maps to Sophia", async () => {
+test("S7-GEMINI-002 [gemini]: Gemini text response maps to Sophia", async () => {
   const provider = createProvider(async () => ({
     text: "Normalized.",
     modelVersion: "evaluation-model-001",
@@ -96,7 +96,7 @@ test("eval 02: Gemini text response maps to Sophia", async () => {
   });
 });
 
-test("eval 03: structured schema metadata maps to Gemini", async () => {
+test("S7-GEMINI-003 [gemini]: structured schema metadata maps to Gemini", async () => {
   const requests: GeminiGenerateContentRequest[] = [];
   const jsonSchema = {
     type: "object",
@@ -129,7 +129,7 @@ test("eval 03: structured schema metadata maps to Gemini", async () => {
   assert.equal(requests[0]?.config?.responseJsonSchema, jsonSchema);
 });
 
-test("eval 04: malformed structured output is rejected", async () => {
+test("S7-GEMINI-004 [gemini]: malformed structured output is rejected", async () => {
   const provider = createProvider(async () => ({
     text: '{"claim":',
     candidates: [{ finishReason: "STOP" }],
@@ -151,7 +151,7 @@ test("eval 04: malformed structured output is rejected", async () => {
   );
 });
 
-test("eval 05: wrong-shaped structured output is rejected by AIRuntime", async () => {
+test("S7-GEMINI-005 [gemini]: wrong-shaped output is rejected by AIRuntime", async () => {
   const schema: StructuredOutputSchema<{ claim: string }> = {
     name: "claim",
     validate(value) {
@@ -186,7 +186,7 @@ test("eval 05: wrong-shaped structured output is rejected by AIRuntime", async (
   );
 });
 
-test("eval 06: unknown Gemini fields do not leak", async () => {
+test("S7-GEMINI-006 [gemini]: unknown Gemini fields do not leak", async () => {
   const provider = createProvider(async () => ({
     text: "Allowlisted.",
     candidates: [{ finishReason: "STOP", secret: "discard" }],
@@ -199,7 +199,7 @@ test("eval 06: unknown Gemini fields do not leak", async () => {
   assert.equal(Object.hasOwn(response, "sdkHttpResponse"), false);
 });
 
-test("eval 07: authentication failure maps safely", async () => {
+test("S7-GEMINI-007 [gemini]: authentication failure maps safely", async () => {
   const provider = createProvider(async () => {
     throw Object.assign(new Error("secret-key"), { status: 401 });
   });
@@ -214,7 +214,7 @@ test("eval 07: authentication failure maps safely", async () => {
   );
 });
 
-test("eval 08: rate limiting is retryable", async () => {
+test("S7-GEMINI-008 [gemini]: rate limiting is retryable", async () => {
   const provider = createProvider(async () => {
     throw Object.assign(new Error("private prompt"), { status: 429 });
   });
@@ -228,7 +228,7 @@ test("eval 08: rate limiting is retryable", async () => {
   );
 });
 
-test("eval 09: caller cancellation maps safely", async () => {
+test("S7-GEMINI-009 [gemini]: caller cancellation maps safely", async () => {
   const controller = new AbortController();
   const provider = createProvider(async (request) => {
     const signal = request.config?.abortSignal;
@@ -261,7 +261,7 @@ test("eval 09: caller cancellation maps safely", async () => {
   );
 });
 
-test("eval 10: missing usage is not fabricated", async () => {
+test("S7-GEMINI-010 [gemini]: missing usage is not fabricated", async () => {
   const provider = createProvider(async () => ({
     text: "No usage.",
     candidates: [{ finishReason: "STOP" }],
@@ -272,7 +272,7 @@ test("eval 10: missing usage is not fabricated", async () => {
   assert.equal(Object.hasOwn(response, "usage"), false);
 });
 
-test("eval 11: provider replacement preserves product-facing output contracts", async () => {
+test("S7-GEMINI-011 [gemini]: provider replacement preserves output contracts", async () => {
   const geminiRuntime = createRuntime(
     createProvider(async () => ({
       text: "Same normalized output.",

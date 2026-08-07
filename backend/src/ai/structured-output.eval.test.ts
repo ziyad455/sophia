@@ -143,7 +143,7 @@ async function generate(
   });
 }
 
-test("structured output eval 01: valid output becomes trusted typed data", async () => {
+test("S7-OUTPUT-001 [structured-output]: valid output becomes trusted data", async () => {
   const { provider, runtime } = createRuntime();
 
   enqueue(provider, validSummary());
@@ -156,7 +156,7 @@ test("structured output eval 01: valid output becomes trusted typed data", async
   assert.equal(result.outputVersion, "1");
 });
 
-test("structured output eval 02: incorrect object shape is rejected", async () => {
+test("S7-OUTPUT-002 [structured-output]: incorrect object shape is rejected", async () => {
   const { provider, runtime } = createRuntime();
 
   enqueue(provider, { title: "Missing fields" });
@@ -168,7 +168,7 @@ test("structured output eval 02: incorrect object shape is rejected", async () =
   );
 });
 
-test("structured output eval 03: malformed nesting is rejected", async () => {
+test("S7-OUTPUT-003 [structured-output]: malformed nesting is rejected", async () => {
   const { provider, runtime } = createRuntime();
 
   enqueue(provider, { ...validSummary(), ideas: [{ text: 42 }] });
@@ -180,7 +180,7 @@ test("structured output eval 03: malformed nesting is rejected", async () => {
   );
 });
 
-test("structured output eval 04: string and array bounds are enforced", async () => {
+test("S7-OUTPUT-004 [structured-output]: string and array bounds are enforced", async () => {
   for (const value of [
     { ...validSummary(), title: "x".repeat(61) },
     { ...validSummary(), ideas: [] },
@@ -201,7 +201,7 @@ test("structured output eval 04: string and array bounds are enforced", async ()
   }
 });
 
-test("structured output eval 05: unsupported enum values are rejected", async () => {
+test("S7-OUTPUT-005 [structured-output]: unsupported enum values are rejected", async () => {
   const { provider, runtime } = createRuntime();
 
   enqueue(provider, { ...validSummary(), mode: "verbose" });
@@ -213,7 +213,7 @@ test("structured output eval 05: unsupported enum values are rejected", async ()
   );
 });
 
-test("structured output eval 06: raw output and validator issues stay private", async () => {
+test("S7-OUTPUT-006 [structured-output]: raw output and issues stay private", async () => {
   const privateText = "private generated eval output";
   const output: StructuredOutputDefinition<SummaryResult> = {
     ...summaryOutputV1,
@@ -234,7 +234,7 @@ test("structured output eval 06: raw output and validator issues stay private", 
   );
 });
 
-test("structured output eval 07: exact versions remain isolated", async () => {
+test("S7-OUTPUT-007 [structured-output]: exact versions remain isolated", async () => {
   const outputV2: StructuredOutputDefinition<SummaryResult> = {
     ...summaryOutputV1,
     version: "2",
@@ -252,7 +252,7 @@ test("structured output eval 07: exact versions remain isolated", async () => {
   assert.equal(v2.outputVersion, "2");
 });
 
-test("structured output eval 08: provider replacement preserves domain data", async () => {
+test("S7-OUTPUT-008 [structured-output]: provider replacement preserves data", async () => {
   const first = createRuntime(new FakeAIProvider({ id: "first-provider" }));
   const second = createRuntime(new FakeAIProvider({ id: "second-provider" }));
 
@@ -269,7 +269,7 @@ test("structured output eval 08: provider replacement preserves domain data", as
   assert.notEqual(firstResult.providerId, secondResult.providerId);
 });
 
-test("structured output eval 09: provider errors keep their own category", async () => {
+test("S7-OUTPUT-009 [structured-output]: provider errors keep their category", async () => {
   const { provider, runtime } = createRuntime();
 
   provider.enqueueError(
@@ -288,7 +288,7 @@ test("structured output eval 09: provider errors keep their own category", async
   );
 });
 
-test("structured output eval 10: result exposes no raw provider response", async () => {
+test("S7-OUTPUT-010 [structured-output]: result exposes no raw response", async () => {
   const { provider, runtime } = createRuntime();
 
   enqueue(provider, validSummary());

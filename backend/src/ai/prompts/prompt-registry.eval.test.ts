@@ -57,7 +57,7 @@ function definition(
   };
 }
 
-test("prompt eval 01: exact ID and version resolve deterministically", () => {
+test("S7-PROMPT-001 [prompt]: exact ID and version resolve deterministically", () => {
   const registry = new PromptRegistry();
 
   registry.register(definition());
@@ -69,7 +69,7 @@ test("prompt eval 01: exact ID and version resolve deterministically", () => {
   assert.equal(result.messages[1]?.content, "Version 1: Input");
 });
 
-test("prompt eval 02: duplicate exact registration is rejected", () => {
+test("S7-PROMPT-002 [prompt]: duplicate exact registration is rejected", () => {
   const registry = new PromptRegistry();
 
   registry.register(definition());
@@ -82,7 +82,7 @@ test("prompt eval 02: duplicate exact registration is rejected", () => {
   );
 });
 
-test("prompt eval 03: multiple explicit versions remain independent", () => {
+test("S7-PROMPT-003 [prompt]: explicit versions remain independent", () => {
   const registry = new PromptRegistry();
 
   registry.register(definition("1", "Version 1"));
@@ -100,7 +100,7 @@ test("prompt eval 03: multiple explicit versions remain independent", () => {
   );
 });
 
-test("prompt eval 04: a missing exact definition fails safely", () => {
+test("S7-PROMPT-004 [prompt]: a missing exact definition fails safely", () => {
   const registry = new PromptRegistry();
 
   assert.throws(
@@ -111,7 +111,7 @@ test("prompt eval 04: a missing exact definition fails safely", () => {
   );
 });
 
-test("prompt eval 05: invalid unknown input never reaches the renderer", () => {
+test("S7-PROMPT-005 [prompt]: invalid input never reaches the renderer", () => {
   const registry = new PromptRegistry();
   let renderCalls = 0;
   const prompt = definition();
@@ -134,7 +134,7 @@ test("prompt eval 05: invalid unknown input never reaches the renderer", () => {
   assert.equal(renderCalls, 0);
 });
 
-test("prompt eval 06: identical input produces equivalent messages", () => {
+test("S7-PROMPT-006 [prompt]: identical input produces equivalent messages", () => {
   const registry = new PromptRegistry();
   const input = { text: "Same input" };
 
@@ -146,7 +146,7 @@ test("prompt eval 06: identical input produces equivalent messages", () => {
   );
 });
 
-test("prompt eval 07: invalid rendered messages are rejected", () => {
+test("S7-PROMPT-007 [prompt]: invalid rendered messages are rejected", () => {
   const registry = new PromptRegistry();
 
   registry.register({
@@ -163,7 +163,7 @@ test("prompt eval 07: invalid rendered messages are rejected", () => {
   );
 });
 
-test("prompt eval 08: render results are mutation-safe", () => {
+test("S7-PROMPT-008 [prompt]: render results are mutation-safe", () => {
   const registry = new PromptRegistry();
 
   registry.register(definition());
@@ -181,7 +181,7 @@ test("prompt eval 08: render results are mutation-safe", () => {
   );
 });
 
-test("prompt eval 09: registry instances do not share state", () => {
+test("S7-PROMPT-009 [prompt]: registry instances do not share state", () => {
   const first = new PromptRegistry();
   const second = new PromptRegistry();
 
@@ -195,7 +195,7 @@ test("prompt eval 09: registry instances do not share state", () => {
   );
 });
 
-test("prompt eval 10: error content omits private input and validator issues", () => {
+test("S7-PROMPT-010 [prompt]: errors omit private input and validator issues", () => {
   const registry = new PromptRegistry();
 
   registry.register({
@@ -221,7 +221,7 @@ test("prompt eval 10: error content omits private input and validator issues", (
   );
 });
 
-test("prompt eval 11: rendered output exposes no provider or model selection", () => {
+test("S7-PROMPT-011 [prompt]: output exposes no provider or model selection", () => {
   const registry = new PromptRegistry();
 
   registry.register(definition());
