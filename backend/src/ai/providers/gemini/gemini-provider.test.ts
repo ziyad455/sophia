@@ -382,7 +382,7 @@ test("rejects malformed structured JSON without exposing generated output", asyn
     }),
     (error: unknown) =>
       error instanceof AIError &&
-      error.code === "invalid_response" &&
+      error.code === "invalid_output" &&
       error.providerId === "gemini" &&
       error.message.includes(rawOutput) === false,
   );
@@ -456,14 +456,14 @@ test("keeps AIRuntime validation authoritative for Gemini structured output", as
     runtime.generate(request),
     (error: unknown) =>
       error instanceof AIError &&
-      error.code === "invalid_response" &&
+      error.code === "invalid_output" &&
       error.providerId === "gemini",
   );
   await assert.rejects(
     runtime.generate(request),
     (error: unknown) =>
       error instanceof AIError &&
-      error.code === "invalid_response" &&
+      error.code === "invalid_output" &&
       error.providerId === "gemini",
   );
 });

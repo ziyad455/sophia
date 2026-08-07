@@ -75,6 +75,14 @@ function invalidResponse(message: string): AIError {
   });
 }
 
+function invalidOutput(message: string, cause?: unknown): AIError {
+  return new AIError("invalid_output", message, {
+    providerId: GEMINI_PROVIDER_ID,
+    retryable: false,
+    ...(cause === undefined ? {} : { cause }),
+  });
+}
+
 function invalidRequest(message: string): AIError {
   return new AIError("invalid_request", message, {
     providerId: GEMINI_PROVIDER_ID,
@@ -470,6 +478,10 @@ export class GeminiProvider implements AIProvider {
         );
       }
 
+      if (structuredOutput) {
+        throw invalidOutput("Gemini returned empty structured output.");
+      }
+
       throw invalidResponse("Gemini returned an empty response.");
     }
 
@@ -481,14 +493,9 @@ export class GeminiProvider implements AIProvider {
       try {
         value = JSON.parse(response.text);
       } catch (error) {
-        throw new AIError(
-          "invalid_response",
+        throw invalidOutput(
           "Gemini returned malformed structured output.",
-          {
-            providerId: this.id,
-            retryable: false,
-            cause: error,
-          },
+          error,
         );
       }
 

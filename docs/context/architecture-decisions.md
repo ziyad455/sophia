@@ -233,3 +233,59 @@ provider tokenizer or a reusable context contract.
 - RAG chunks, retrieval/reranking, conversation history, long-term memory,
   production prompts, application composition, routes, persistence, and UI
   remain later decisions.
+
+## ADR: Structured Outputs Are Directly Imported and Runtime-Validated
+
+Status: Accepted on 2026-08-07
+
+### Context
+
+S7-T1 already defines provider-neutral structured schemas, optional JSON Schema
+guidance, normalized provider values, and authoritative validation inside
+`AIRuntime`. S7-T2 already parses Gemini JSON inside the adapter and forwards an
+unknown candidate value. The missing application layer is exact output identity
+and versioning plus a typed result that future features can consume without
+constructing low-level output requirements or narrowing response unions.
+
+The current runtime also copied arbitrary validator issue strings into public
+error details and did not safely normalize malformed validator-result objects.
+Those behaviors could expose generated private content or raw runtime failures.
+
+### Decision
+
+- Define application output contracts in TypeScript with a stable lowercase
+  ID, exact positive-integer version string, internal description, the existing
+  runtime validator, and optional provider-neutral JSON Schema metadata.
+- Import definitions directly and select an exact constant at the feature call
+  site. Do not add a registry, global mutable state, import-time registration,
+  latest-version selection, migration system, or rollout mechanism.
+- Add `AIRuntime.generateStructured` as a thin typed facade over the existing
+  generation path. It validates/captures the definition before provider work
+  and returns trusted `data` with exact output identity/version and normalized
+  response metadata.
+- Keep JSON parsing in provider adapters and runtime validation in `AIRuntime`.
+  JSON Schema is provider guidance only; Gemini-specific support remains inside
+  `GeminiProvider`.
+- Classify empty, malformed, and schema-invalid structured results as
+  `invalid_output`. Retain `invalid_response` for malformed provider metadata
+  or normalized response envelopes.
+- Do not expose validator issues or generated values in safe errors. Preserve
+  unexpected causes only as internal, non-serialized diagnostics under the
+  existing error policy.
+- Require each definition validator to own its strict fields, nested types,
+  enums, bounds, finite-number policy, and any explicit normalization. Add no
+  generic repair or coercion behavior.
+
+### Consequences
+
+- Future feature code can request one exact output definition and consume
+  strongly typed validated data without `JSON.parse`, provider imports, output
+  casts, response-union narrowing, or duplicate validation.
+- V1 and V2 definitions can coexist as separate imported constants without a
+  mutable registry or silent version change.
+- Providers may improve candidate conformance with JSON Schema, but cannot
+  decide application validity or output version.
+- Deterministic tests use the existing `FakeAIProvider`; malformed JSON remains
+  an adapter test because provider-neutral responses already contain `unknown`.
+- No production philosophy output, prompt, route, UI, persistence, RAG, memory,
+  streaming, retry, fallback, or repair behavior is introduced.

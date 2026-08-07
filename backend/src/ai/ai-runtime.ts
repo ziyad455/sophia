@@ -5,10 +5,16 @@ import {
   type AIRequest,
   type AIResponse,
   type AIUsage,
+  type StructuredOutputRequest,
+  type StructuredOutputResult,
 } from "./contracts";
 import { AIError, normalizeAIError } from "./errors";
 import type { AIProviderRegistry } from "./provider-registry";
-import { validateStructuredOutput } from "./structured-output";
+import {
+  prepareStructuredOutput,
+  type PreparedStructuredOutput,
+  validateStructuredOutput,
+} from "./structured-output";
 
 export type AIRuntimeOptions = {
   providers: AIProviderRegistry;
@@ -193,6 +199,71 @@ export class AIRuntime {
     this.#defaultProviderId = options.defaultProviderId;
   }
 
+  async generateStructured<T>(
+    request: StructuredOutputRequest<T>,
+  ): Promise<StructuredOutputResult<T>> {
+    if (!isRecord(request)) {
+      throw invalidRequest("The structured AI request is invalid.");
+    }
+
+    let output: PreparedStructuredOutput<T>;
+
+    try {
+      output = prepareStructuredOutput(request.output);
+    } catch (error) {
+      if (error instanceof AIError) {
+        throw error;
+      }
+
+      throw invalidRequest("The structured AI request is invalid.");
+    }
+
+    const response = await this.generate<T>({
+      messages: request.messages,
+      ...(request.model === undefined ? {} : { model: request.model }),
+      ...(request.temperature === undefined
+        ? {}
+        : { temperature: request.temperature }),
+      ...(request.maxOutputTokens === undefined
+        ? {}
+        : { maxOutputTokens: request.maxOutputTokens }),
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
+      output: {
+        type: "structured",
+        schema: output.schema,
+      },
+    });
+
+    if (response.output.type !== "structured") {
+      throw new AIError(
+        "invalid_output",
+        "The AI provider did not return the requested structured output.",
+        {
+          providerId: response.providerId,
+          retryable: false,
+        },
+      );
+    }
+
+    return {
+      outputId: output.id,
+      outputVersion: output.version,
+      data: response.output.value,
+      providerId: response.providerId,
+      model: response.model,
+      finishReason: response.finishReason,
+      ...(response.usage === undefined
+        ? {}
+        : {
+            usage: {
+              inputTokens: response.usage.inputTokens,
+              outputTokens: response.usage.outputTokens,
+              totalTokens: response.usage.totalTokens,
+            },
+          }),
+    };
+  }
+
   async generate<T = string>(request: AIRequest<T>): Promise<AIResponse<T>> {
     validateRequest(request);
 
@@ -216,9 +287,13 @@ export class AIRuntime {
 
     if (outputRequirement.type === "structured") {
       if (response.output.type !== "structured") {
-        throw invalidResponse(
-          provider.id,
+        throw new AIError(
+          "invalid_output",
           "The AI provider did not return the requested structured output.",
+          {
+            providerId: provider.id,
+            retryable: false,
+          },
         );
       }
 

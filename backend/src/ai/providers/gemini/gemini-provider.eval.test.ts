@@ -147,7 +147,7 @@ test("eval 04: malformed structured output is rejected", async () => {
       },
     }),
     (error: unknown) =>
-      error instanceof AIError && error.code === "invalid_response",
+      error instanceof AIError && error.code === "invalid_output",
   );
 });
 
@@ -182,7 +182,7 @@ test("eval 05: wrong-shaped structured output is rejected by AIRuntime", async (
       output: { type: "structured", schema },
     }),
     (error: unknown) =>
-      error instanceof AIError && error.code === "invalid_response",
+      error instanceof AIError && error.code === "invalid_output",
   );
 });
 

@@ -8,6 +8,7 @@ export const AI_ERROR_CODES = [
   "cancelled",
   "provider_unavailable",
   "content_filtered",
+  "invalid_output",
   "invalid_response",
   "provider_failure",
 ] as const;
