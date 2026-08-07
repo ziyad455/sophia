@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import {
   AI_FINISH_REASONS,
   AI_MESSAGE_ROLES,
@@ -9,16 +11,32 @@ import {
   type StructuredOutputResult,
 } from "./contracts";
 import { AIError, normalizeAIError } from "./errors";
+import {
+  normalizeAITraceMetadata,
+  type NormalizedAITraceMetadata,
+} from "./tracing/trace-metadata";
 import type { AIProviderRegistry } from "./provider-registry";
 import {
   prepareStructuredOutput,
   type PreparedStructuredOutput,
   validateStructuredOutput,
 } from "./structured-output";
+import type {
+  AITrace,
+  AITraceClock,
+  AITraceMetadata,
+  AITracingOptions,
+} from "./tracing";
 
 export type AIRuntimeOptions = {
   providers: AIProviderRegistry;
   defaultProviderId: string;
+  tracing?: AITracingOptions;
+};
+
+const systemTraceClock: AITraceClock = {
+  now: () => new Date(),
+  monotonicNow: () => performance.now(),
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -193,14 +211,23 @@ function validateProviderResponse(
 export class AIRuntime {
   readonly #providers: AIProviderRegistry;
   readonly #defaultProviderId: string;
+  readonly #tracing?: Required<AITracingOptions>;
 
   constructor(options: AIRuntimeOptions) {
     this.#providers = options.providers;
     this.#defaultProviderId = options.defaultProviderId;
+    this.#tracing = options.tracing
+      ? {
+          sink: options.tracing.sink,
+          createTraceId: options.tracing.createTraceId ?? randomUUID,
+          clock: options.tracing.clock ?? systemTraceClock,
+        }
+      : undefined;
   }
 
   async generateStructured<T>(
     request: StructuredOutputRequest<T>,
+    traceMetadata?: AITraceMetadata,
   ): Promise<StructuredOutputResult<T>> {
     if (!isRecord(request)) {
       throw invalidRequest("The structured AI request is invalid.");
@@ -218,21 +245,28 @@ export class AIRuntime {
       throw invalidRequest("The structured AI request is invalid.");
     }
 
-    const response = await this.generate<T>({
-      messages: request.messages,
-      ...(request.model === undefined ? {} : { model: request.model }),
-      ...(request.temperature === undefined
-        ? {}
-        : { temperature: request.temperature }),
-      ...(request.maxOutputTokens === undefined
-        ? {}
-        : { maxOutputTokens: request.maxOutputTokens }),
-      ...(request.signal === undefined ? {} : { signal: request.signal }),
-      output: {
-        type: "structured",
-        schema: output.schema,
+    const response = await this.#executeWithTrace<T>(
+      {
+        messages: request.messages,
+        ...(request.model === undefined ? {} : { model: request.model }),
+        ...(request.temperature === undefined
+          ? {}
+          : { temperature: request.temperature }),
+        ...(request.maxOutputTokens === undefined
+          ? {}
+          : { maxOutputTokens: request.maxOutputTokens }),
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
+        output: {
+          type: "structured",
+          schema: output.schema,
+        },
       },
-    });
+      normalizeAITraceMetadata(
+        traceMetadata,
+        "ai.generate-structured",
+        Object.freeze({ id: output.id, version: output.version }),
+      ),
+    );
 
     if (response.output.type !== "structured") {
       throw new AIError(
@@ -264,7 +298,120 @@ export class AIRuntime {
     };
   }
 
-  async generate<T = string>(request: AIRequest<T>): Promise<AIResponse<T>> {
+  async generate<T = string>(
+    request: AIRequest<T>,
+    traceMetadata?: AITraceMetadata,
+  ): Promise<AIResponse<T>> {
+    return this.#executeWithTrace(
+      request,
+      normalizeAITraceMetadata(traceMetadata, "ai.generate"),
+    );
+  }
+
+  async #executeWithTrace<T>(
+    request: AIRequest<T>,
+    metadata: NormalizedAITraceMetadata,
+  ): Promise<AIResponse<T>> {
+    const tracing = this.#tracing;
+
+    if (!tracing) {
+      return this.#generate(request);
+    }
+
+    let traceId: string;
+    let startedAt: Date;
+    let startedMonotonic: number;
+
+    try {
+      traceId = tracing.createTraceId();
+      startedAt = tracing.clock.now();
+      startedMonotonic = tracing.clock.monotonicNow();
+    } catch {
+      return this.#generate(request);
+    }
+
+    let response: AIResponse<T>;
+
+    try {
+      response = await this.#generate(request);
+    } catch (error) {
+      const normalizedError = error instanceof AIError
+        ? error
+        : normalizeAIError(error, this.#defaultProviderId);
+      try {
+        const completedAt = tracing.clock.now();
+        const completedMonotonic = tracing.clock.monotonicNow();
+        const trace: AITrace = Object.freeze({
+          traceId,
+          operationName: metadata.operationName,
+          startedAt: startedAt.toISOString(),
+          completedAt: completedAt.toISOString(),
+          durationMs: Math.max(0, completedMonotonic - startedMonotonic),
+          status: normalizedError.code === "cancelled" ? "cancelled" : "failure",
+          providerId: normalizedError.providerId ?? this.#defaultProviderId,
+          ...(metadata.prompt === undefined ? {} : { prompt: metadata.prompt }),
+          ...(metadata.context === undefined ? {} : { context: metadata.context }),
+          ...(metadata.structuredOutput === undefined
+            ? {}
+            : { structuredOutput: metadata.structuredOutput }),
+          errorCode: normalizedError.code,
+          retryable: normalizedError.retryable,
+        });
+
+        await this.#recordTrace(trace);
+      } catch {
+        // Trace completion is best-effort and cannot replace the AI error.
+      }
+
+      throw error;
+    }
+
+    try {
+      const completedAt = tracing.clock.now();
+      const completedMonotonic = tracing.clock.monotonicNow();
+      const trace: AITrace = Object.freeze({
+        traceId,
+        operationName: metadata.operationName,
+        startedAt: startedAt.toISOString(),
+        completedAt: completedAt.toISOString(),
+        durationMs: Math.max(0, completedMonotonic - startedMonotonic),
+        status: "success",
+        providerId: response.providerId,
+        ...(metadata.prompt === undefined ? {} : { prompt: metadata.prompt }),
+        ...(metadata.context === undefined ? {} : { context: metadata.context }),
+        ...(metadata.structuredOutput === undefined
+          ? {}
+          : { structuredOutput: metadata.structuredOutput }),
+        modelId: response.model,
+        finishReason: response.finishReason,
+        ...(response.usage === undefined
+          ? {}
+          : {
+              usage: Object.freeze({
+                inputTokens: response.usage.inputTokens,
+                outputTokens: response.usage.outputTokens,
+                totalTokens: response.usage.totalTokens,
+              }),
+            }),
+      });
+
+      await this.#recordTrace(trace);
+    } catch {
+      // Trace completion is best-effort and cannot replace the AI result.
+    }
+
+    return response;
+  }
+
+  async #recordTrace(trace: AITrace): Promise<void> {
+    try {
+      await this.#tracing?.sink.record(trace);
+    } catch {
+      // Tracing is best-effort and must not replace the AI result or error.
+    }
+  }
+
+  async #generate<T = string>(request: AIRequest<T>): Promise<AIResponse<T>> {
     validateRequest(request);
 
     if (request.signal?.aborted) {

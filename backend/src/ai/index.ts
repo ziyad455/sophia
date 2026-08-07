@@ -59,3 +59,18 @@ export {
   type PromptRenderResult,
 } from "./prompts";
 export { validateStructuredOutput } from "./structured-output";
+export {
+  AI_TRACE_STATUSES,
+  createAITraceContextMetadata,
+  type AITrace,
+  type AITraceClock,
+  type AITraceContextMetadata,
+  type AITraceMetadata,
+  type AITracePromptMetadata,
+  type AITraceSink,
+  type AITraceStatus,
+  type AITraceStructuredOutputMetadata,
+  type AITracingOptions,
+  InMemoryAITraceSink,
+  type InMemoryAITraceSinkOptions,
+} from "./tracing";
