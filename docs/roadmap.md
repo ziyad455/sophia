@@ -116,6 +116,8 @@ Reflection is core to Sophia. Notes and highlights also become future AI context
 
 ## Sprint 7: AI Runtime Foundation
 
+Status: Complete.
+
 Approximate duration: 1-2 weeks
 
 Main goal:
@@ -134,6 +136,9 @@ Why this comes here:
 The app now has users, books, selected text, chunks, notes, and highlights. The AI layer can finally receive meaningful structured context.
 
 ## Sprint 8: AI Companion Chat
+
+Status: In progress. S8-T1 backend implementation is present; completion is
+pending the repository-required user-run build verification.
 
 Approximate duration: 2 weeks
 

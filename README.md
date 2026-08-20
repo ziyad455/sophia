@@ -936,7 +936,7 @@ Additional reader adjustments:
 
 ### Sprint 7 — AI Runtime Foundation
 
-**Status:** Planned
+**Status:** Complete
 
 - AI provider interface;
 - Gemini adapter;
@@ -948,10 +948,10 @@ Additional reader adjustments:
 
 ### Sprint 8 — AI Companion Chat
 
-**Status:** Planned
+**Status:** In progress
 
-- chat sessions;
-- messages;
+- S8-T1 chat sessions and messages foundation — implementation present,
+  repository-required user-run build verification pending;
 - reader chat panel;
 - passage explanation;
 - chapter summary;

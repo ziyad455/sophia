@@ -3,6 +3,7 @@ import { config } from "./config";
 import { checkDatabaseHealth } from "./db";
 import { createAuthRouter } from "./auth/auth.routes";
 import { createBooksRouter } from "./books/books.routes";
+import { createChatRouter } from "./chat/chat.routes";
 import { HttpError } from "./http/errors";
 import { createHighlightsRouter } from "./highlights/highlights.routes";
 import { createNotesRouter } from "./notes/notes.routes";
@@ -61,6 +62,7 @@ export function createApp() {
   app.use("/books", createHighlightsRouter());
   app.use("/books", createNotesRouter());
   app.use("/books", createReadingSessionsRouter());
+  app.use("/books", createChatRouter());
   app.use("/books", createBooksRouter());
   app.use("/preferences", createPreferencesRouter());
 
