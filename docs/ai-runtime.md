@@ -871,7 +871,32 @@ Not implemented here:
 - production prompt definitions or task modes
 - production structured-output definitions
 - production context selection or application wiring
-- chat or HTTP endpoints
+- AI-generated chat or AI HTTP orchestration endpoints
 - summaries, explanations, or reflection behavior
 - RAG, embeddings, or memory
 - AI persistence or audit tables
+
+## S8-T1 Conversation Persistence Boundary
+
+S8-T1 adds authenticated chat-session and user-message persistence outside the
+AI runtime. The domain service authorizes through `UserBook`, returns controlled
+DTOs, and never calls `GeminiProvider`, `AIRuntime`, `PromptRegistry`, or
+`ContextBuilder`. Message content is not added to traces or operational logs.
+
+The browser can persist only role `user`. There is deliberately no public or
+internal assistant-write function in S8-T1 because no production orchestrator
+needs it yet. A future task can add an internal-only service method after an AI
+result is produced, reusing the same session ownership and message validation
+rules without putting provider logic in controllers or the chat persistence
+service.
+
+The intended future flow remains:
+
+```text
+authorized user message -> ordered conversation history
+-> authorized reading context -> ContextBuilder -> PromptRegistry
+-> AIRuntime -> assistant result -> internal assistant persistence
+```
+
+None of that orchestration, generation, prompting, context selection, RAG,
+memory, streaming, or reader UI is implemented by S8-T1.

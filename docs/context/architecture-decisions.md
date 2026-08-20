@@ -340,3 +340,44 @@ requirement.
   reliability and persistence design.
 - Trace IDs remain visible through the sink boundary rather than changing the
   existing AI result/error contracts or product APIs.
+
+## ADR: Private Chat Is Owned Through UserBook
+
+Status: Accepted on 2026-08-20
+
+### Context
+
+Sophia's `Book` records may be shared by multiple users, while questions,
+reflections, quoted passages, and future assistant answers are private reading
+data. The schema already contains future-facing chat tables and denormalized
+user/book fields, but it had no application service or API boundary.
+
+### Decision
+
+- Treat `UserBook` as the authoritative chat ownership boundary. Every chat
+  operation derives the user from authenticated request context and scopes the
+  requested session to both that user and the route's `userBookId`.
+- Return 404 for malformed, missing, mismatched, or unowned chat resources.
+- Expose allowlisted DTOs rather than Prisma records. Browser writes accept
+  only bounded plain-text content and always assign role `user` server-side.
+- Order messages by server-generated `createdAt ASC, id ASC`; the UUID
+  tie-breaker provides deterministic order for equal timestamps without a
+  client-controlled sequence or allocation transaction.
+- Preserve the existing schema and cascade rather than removing future-facing
+  columns or adding a speculative migration. Delete sessions with one scoped
+  database statement and let the foreign key cascade remove messages.
+- Defer assistant persistence until a production orchestration task needs an
+  internal-only method. Do not call AI providers, runtime, prompts, or context
+  assembly from the persistence layer.
+
+### Consequences
+
+- Owners of the same underlying `Book` cannot discover or mutate one another's
+  conversations.
+- S8-T1 has no schema migration and no new dependency.
+- Public ordering is stable but does not claim that equal database timestamps
+  encode request-arrival order; UUID is the documented tie-breaker.
+- Existing legacy `system` and `tool` enum values remain in storage for
+  compatibility but are neither writable nor readable through S8-T1 APIs.
+- Later AI chat work must introduce its assistant-write boundary explicitly and
+  keep authorization and private-content logging rules intact.

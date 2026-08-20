@@ -371,6 +371,18 @@ A note can be:
 
 Sophia chat is reading-contextual. It should not be modeled as a generic chatbot transcript.
 
+S8-T1 uses `UserBook` as the private ownership boundary:
+
+```text
+User -> UserBook -> ChatSession -> ChatMessage
+```
+
+The existing denormalized `userId` and `bookId` columns are always populated
+server-side from the authenticated owner and owned `UserBook`; they are never
+accepted from a browser. Application queries scope a session by authenticated
+user, requested `UserBook`, and requested session ID. Two users may reference
+the same `Book` record without sharing chat data.
+
 ### chat_sessions
 
 Recommended fields:
@@ -392,6 +404,9 @@ Mode examples:
 - book_question
 - general_reading_help
 
+S8-T1 does not accept mode, title, chapter, or archive state from the client.
+Those pre-existing future-facing columns are outside the foundation API.
+
 ### chat_messages
 
 Recommended fields:
@@ -409,7 +424,20 @@ Recommended fields:
 - metadata
 - createdAt
 
-Role examples:
+The S8-T1 browser boundary persists only server-assigned role `user` plus
+validated `content`. Public reads allowlist `user` and `assistant`; system and
+tool roles from the legacy schema are not exposed. A future AI orchestration
+task may add an internal-only assistant persistence method, but there is no
+public assistant-message endpoint.
+
+Conversation messages are returned by `createdAt ASC, id ASC`. Both fields are
+server-generated, and the UUID tie-breaker makes equal timestamps a stable
+total order without client-controlled sequence numbers. Session lists use
+`createdAt DESC, id DESC`. The existing session/message indexes support these
+scoped queries, and the existing `ChatMessage.session` cascade removes messages
+atomically when a session is deleted.
+
+Legacy schema role values:
 - user
 - assistant
 - system
